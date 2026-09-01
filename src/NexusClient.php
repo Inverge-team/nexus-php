@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Inverge\Nexus;
 
+use Inverge\Nexus\Contracts\Dispatcher;
 use Inverge\Nexus\Contracts\Transport;
 use Inverge\Nexus\Exception\ApiException;
 use Inverge\Nexus\Http\CurlTransport;
+use Inverge\Nexus\Http\SyncDispatcher;
 use Inverge\Nexus\Resource\Errors;
 use Inverge\Nexus\Resource\Events;
 use Inverge\Nexus\Resource\Flags;
@@ -28,6 +30,8 @@ use Inverge\Nexus\Resource\Sessions;
  */
 final class NexusClient
 {
+    private readonly Dispatcher $dispatcher;
+
     private Realtime $realtime;
     private Events $events;
     private Errors $errors;
@@ -36,10 +40,17 @@ final class NexusClient
     private Flags $flags;
     private Links $links;
 
+    /**
+     * @param Transport|null  $transport   transport for the default sync dispatcher (ignored if $dispatcher is given)
+     * @param Dispatcher|null $dispatcher  a custom dispatcher (e.g. a queued one); defaults to synchronous cURL
+     */
     public function __construct(
         private readonly Config $config,
-        private readonly Transport $transport = new CurlTransport(),
+        ?Transport $transport = null,
+        ?Dispatcher $dispatcher = null,
     ) {
+        $this->dispatcher = $dispatcher ?? new SyncDispatcher($config, $transport ?? new CurlTransport());
+
         $this->realtime = new Realtime($this);
         $this->events = new Events($this);
         $this->errors = new Errors($this);
@@ -57,6 +68,16 @@ final class NexusClient
     public static function create(string $apiKey, array $options = []): self
     {
         return new self(Config::fromArray($apiKey, $options));
+    }
+
+    /**
+     * A clone that delivers through a different dispatcher — e.g. a queued one
+     * for fire-and-forget telemetry. Result-returning calls (flags, sessions)
+     * shouldn't be used on a deferred dispatcher since they can't return.
+     */
+    public function withDispatcher(Dispatcher $dispatcher): self
+    {
+        return new self($this->config, null, $dispatcher);
     }
 
     public function realtime(): Realtime
@@ -113,27 +134,6 @@ final class NexusClient
      */
     public function request(string $method, string $path, ?array $json = null, array $headers = []): ?array
     {
-        $url = $this->config->httpBase() . $path;
-
-        $allHeaders = array_merge(
-            [
-                'x-api-key' => $this->config->apiKey,
-                'Accept' => 'application/json',
-            ],
-            $this->config->defaultHeaders,
-            $headers,
-        );
-
-        if ($json !== null) {
-            $allHeaders['Content-Type'] = 'application/json';
-        }
-
-        $response = $this->transport->send($method, $url, $allHeaders, $json, $this->config->timeout);
-
-        if (!$response->successful()) {
-            throw ApiException::fromResponse($response);
-        }
-
-        return $response->json();
+        return $this->dispatcher->dispatch($method, $path, $json, $headers);
     }
 }

@@ -37,6 +37,10 @@ final class Configuration implements ConfigurationInterface
                 ->floatNode('timeout')
                     ->defaultValue(10.0)
                 ->end()
+                ->booleanNode('capture_errors')
+                    ->defaultTrue()
+                    ->info('Auto-report unhandled kernel exceptions to Nexus Errors.')
+                ->end()
             ->end();
 
         return $treeBuilder;

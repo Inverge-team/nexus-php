@@ -114,6 +114,53 @@ final class OrderService
 }
 ```
 
+## Log forwarding, auto error capture & queued delivery
+
+### Laravel
+
+Flip on log forwarding and automatic error capture with env vars:
+
+```dotenv
+NEXUS_LOGGING=true          # ship logs to Nexus Logs (batched)
+NEXUS_CAPTURE_ERRORS=true   # unhandled exceptions -> Nexus Errors (default true)
+NEXUS_QUEUE=true            # deliver via the queue instead of inline (optional)
+NEXUS_QUEUE_CONNECTION=redis
+NEXUS_QUEUE_NAME=default
+```
+
+With `NEXUS_LOGGING=true` the SDK attaches a Monolog handler to your default log
+channel: every `Log::info(...)` flows to Nexus (buffered into one batched request
+per request lifecycle), and any logged exception is reported to Nexus Errors with
+a full stacktrace. With `NEXUS_QUEUE=true` that delivery moves onto the queue so
+it never touches request latency.
+
+For fire-and-forget telemetry from your own code, resolve the queued client:
+
+```php
+app('nexus.queue')->events()->capture('order_placed', ['total' => 42], ['distinctId' => $userId]);
+```
+
+### Symfony
+
+Auto error capture is on by default — the bundle registers a `kernel.exception`
+subscriber. Toggle it in `config/packages/nexus.yaml`:
+
+```yaml
+nexus:
+    api_key: '%env(NEXUS_API_KEY)%'
+    capture_errors: true
+```
+
+To forward logs, add the provided Monolog handler service in `config/packages/monolog.yaml`:
+
+```yaml
+monolog:
+    handlers:
+        nexus:
+            type: service
+            id: Inverge\Nexus\Monolog\NexusLogHandler
+```
+
 ## Bring your own HTTP client (PSR-18)
 
 The default transport uses cURL. To use Guzzle (or any PSR-18 client), inject a
