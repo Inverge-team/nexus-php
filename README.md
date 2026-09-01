@@ -161,6 +161,33 @@ monolog:
             id: Inverge\Nexus\Monolog\NexusLogHandler
 ```
 
+**Async delivery** (parity with Laravel's queue) — requires `symfony/messenger`:
+
+```yaml
+# config/packages/nexus.yaml
+nexus:
+    api_key: '%env(NEXUS_API_KEY)%'
+    async: true            # dispatch telemetry (errors/logs) via Messenger
+```
+
+```yaml
+# config/packages/messenger.yaml — route the message to an async transport
+framework:
+    messenger:
+        routing:
+            'Inverge\Nexus\Symfony\Messenger\NexusDeliveryMessage': async
+```
+
+With `async: true`, error capture and the log handler dispatch a
+`NexusDeliveryMessage` onto the bus; a bundled handler delivers it in the worker.
+
+### Verify your setup (Laravel)
+
+```bash
+php artisan nexus:test              # checks config + auth (lists rooms)
+php artisan nexus:test --room=demo  # also emits a test event to the "demo" room
+```
+
 ## Bring your own HTTP client (PSR-18)
 
 The default transport uses cURL. To use Guzzle (or any PSR-18 client), inject a

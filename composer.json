@@ -24,7 +24,8 @@
         "psr/http-client": "Bring your own PSR-18 HTTP client (e.g. Guzzle) instead of the built-in cURL transport.",
         "monolog/monolog": "Forward your app's logs to Nexus via Inverge\\Nexus\\Monolog\\NexusLogHandler (^3).",
         "illuminate/support": "Laravel integration (auto-discovered service provider + facade).",
-        "symfony/http-kernel": "Symfony integration (bundle + auto error-capture listener)."
+        "symfony/http-kernel": "Symfony integration (bundle + auto error-capture listener).",
+        "symfony/messenger": "Symfony async telemetry delivery (nexus: async: true)."
     },
     "autoload": {
         "psr-4": { "Inverge\\Nexus\\": "src/" }

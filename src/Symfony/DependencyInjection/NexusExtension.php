@@ -5,17 +5,21 @@ declare(strict_types=1);
 namespace Inverge\Nexus\Symfony\DependencyInjection;
 
 use Inverge\Nexus\Config;
+use Inverge\Nexus\Http\SyncDispatcher;
 use Inverge\Nexus\Monolog\NexusLogHandler;
 use Inverge\Nexus\NexusClient;
 use Inverge\Nexus\Symfony\EventListener\ExceptionSubscriber;
+use Inverge\Nexus\Symfony\Messenger\MessengerDispatcher;
+use Inverge\Nexus\Symfony\Messenger\NexusDeliveryHandler;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Extension\Extension;
 use Symfony\Component\DependencyInjection\Reference;
 
 /**
- * Registers {@see NexusClient} as an autowireable service built from the
- * bundle's configuration.
+ * Registers {@see NexusClient} (autowireable) from config, plus — when enabled —
+ * auto error capture ({@see ExceptionSubscriber}), a Monolog handler service,
+ * and async delivery via Symfony Messenger.
  */
 final class NexusExtension extends Extension
 {
@@ -24,30 +28,61 @@ final class NexusExtension extends Extension
     {
         $config = $this->processConfiguration(new Configuration(), $configs);
 
-        $configDefinition = new Definition(Config::class, [
+        $container->setDefinition(Config::class, new Definition(Config::class, [
             $config['api_key'],
             $config['base_url'],
             (float) $config['timeout'],
+        ]));
+
+        $container->setDefinition(SyncDispatcher::class, new Definition(SyncDispatcher::class, [
+            new Reference(Config::class),
+        ]));
+
+        $clientDefinition = new Definition(NexusClient::class, [
+            new Reference(Config::class),
+            null,
+            new Reference(SyncDispatcher::class),
         ]);
-
-        $clientDefinition = new Definition(NexusClient::class, [$configDefinition]);
         $clientDefinition->setPublic(true);
-
         $container->setDefinition(NexusClient::class, $clientDefinition);
         $container->setAlias('nexus', NexusClient::class)->setPublic(true);
 
-        // Auto error capture via a kernel.exception subscriber.
+        // Which client telemetry (errors/logs) uses — the async one when enabled.
+        $telemetryClient = new Reference(NexusClient::class);
+
+        if ($config['async']) {
+            $container->setDefinition(MessengerDispatcher::class, new Definition(MessengerDispatcher::class, [
+                new Reference($config['bus']),
+            ]));
+
+            $handler = new Definition(NexusDeliveryHandler::class, [new Reference(SyncDispatcher::class)]);
+            $handler->addTag('messenger.message_handler');
+            $container->setDefinition(NexusDeliveryHandler::class, $handler);
+
+            $asyncClient = new Definition(NexusClient::class, [
+                new Reference(Config::class),
+                null,
+                new Reference(MessengerDispatcher::class),
+            ]);
+            $asyncClient->setPublic(true);
+            $container->setDefinition('nexus.async', $asyncClient);
+
+            $telemetryClient = new Reference('nexus.async');
+        }
+
         if ($config['capture_errors']) {
-            $subscriber = new Definition(ExceptionSubscriber::class, [new Reference(NexusClient::class)]);
+            $subscriber = new Definition(ExceptionSubscriber::class, [$telemetryClient]);
             $subscriber->addTag('kernel.event_subscriber');
             $container->setDefinition(ExceptionSubscriber::class, $subscriber);
         }
 
-        // A Monolog handler service for log forwarding. Add it to your
-        // monolog.yaml `handlers` (type: service, id: Inverge\Nexus\Monolog\NexusLogHandler).
-        // Exceptions are captured by the subscriber above, so keep it off here.
-        $logHandler = new Definition(NexusLogHandler::class, [new Reference(NexusClient::class), false]);
-        $container->setDefinition(NexusLogHandler::class, $logHandler);
+        // Monolog handler service — add it to monolog.yaml `handlers`
+        // (type: service, id: Inverge\Nexus\Monolog\NexusLogHandler). Exceptions
+        // are handled by the subscriber, so keep capture off here (2nd arg false).
+        $container->setDefinition(NexusLogHandler::class, new Definition(NexusLogHandler::class, [
+            $telemetryClient,
+            false,
+        ]));
     }
 
     public function getAlias(): string

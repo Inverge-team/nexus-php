@@ -57,6 +57,8 @@ final class NexusServiceProvider extends ServiceProvider
             $this->publishes([
                 __DIR__ . '/config/nexus.php' => $this->app->configPath('nexus.php'),
             ], 'nexus-config');
+
+            $this->commands([NexusTestCommand::class]);
         }
 
         $this->attachLogHandler();

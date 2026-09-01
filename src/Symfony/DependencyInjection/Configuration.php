@@ -41,6 +41,14 @@ final class Configuration implements ConfigurationInterface
                     ->defaultTrue()
                     ->info('Auto-report unhandled kernel exceptions to Nexus Errors.')
                 ->end()
+                ->booleanNode('async')
+                    ->defaultFalse()
+                    ->info('Deliver telemetry via Symfony Messenger instead of inline (requires symfony/messenger).')
+                ->end()
+                ->scalarNode('bus')
+                    ->defaultValue('message_bus')
+                    ->info('Message bus service id used for async delivery.')
+                ->end()
             ->end();
 
         return $treeBuilder;
