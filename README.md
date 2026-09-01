@@ -1,0 +1,157 @@
+# Nexus PHP SDK
+
+Official **server-side** PHP SDK for the [Inverge Nexus](https://nexus.inverge.net)
+platform — realtime, product analytics, error monitoring, structured logs,
+feature flags, deep-link attribution and the sessions spine.
+
+Framework-agnostic core (zero required dependencies beyond `ext-curl`) with
+first-class **Laravel** and **Symfony** integrations. Works in any PHP app —
+native, Laravel, Symfony, Slim, WordPress, …
+
+- PHP **8.1+**
+- Talks to the `x-api-key`-authenticated `/partner/*` HTTP API
+- Bring-your-own HTTP client (any PSR-18) or use the built-in cURL transport
+
+## Install
+
+```bash
+composer require inverge/nexus
+```
+
+## Quick start (any PHP)
+
+```php
+use Inverge\Nexus\NexusClient;
+
+$nexus = NexusClient::create('nxs_live_xxx'); // or pass ['base_url' => '...', 'timeout' => 10]
+
+// Realtime: broadcast to everyone in a room
+$nexus->realtime()->emit('orders:42', 'status', ['state' => 'shipped']);
+
+// Analytics
+$nexus->events()->capture('order_placed', ['total' => 42.0], ['distinctId' => 'user_1']);
+
+// Errors
+try {
+    // ...
+} catch (\Throwable $e) {
+    $nexus->errors()->captureException($e, ['distinctId' => 'user_1']);
+}
+
+// Logs
+$nexus->logs()->info('Payment captured', ['context' => ['order' => 42]]);
+
+// Feature flags
+if ($nexus->flags()->isEnabled('new_checkout', 'user_1')) {
+    // ...
+}
+```
+
+## Laravel
+
+Auto-discovered — just set the env vars:
+
+```dotenv
+NEXUS_API_KEY=nxs_live_xxx
+NEXUS_BASE_URL=https://api.nexus.inverge.net
+```
+
+Optionally publish the config: `php artisan vendor:publish --tag=nexus-config`.
+
+Use the facade or inject the client:
+
+```php
+use Inverge\Nexus\Laravel\Nexus;
+
+Nexus::realtime()->emit('orders:42', 'status', ['state' => 'shipped']);
+Nexus::events()->capture('order_placed', ['total' => 42], ['distinctId' => auth()->id()]);
+```
+
+```php
+use Inverge\Nexus\NexusClient;
+
+class OrderController
+{
+    public function __construct(private NexusClient $nexus) {}
+
+    public function ship(Order $order): void
+    {
+        $this->nexus->realtime()->emit("orders:{$order->customer_id}", 'status', ['state' => 'shipped']);
+    }
+}
+```
+
+## Symfony
+
+Register the bundle in `config/bundles.php`:
+
+```php
+Inverge\Nexus\Symfony\NexusBundle::class => ['all' => true],
+```
+
+Configure `config/packages/nexus.yaml`:
+
+```yaml
+nexus:
+    api_key: '%env(NEXUS_API_KEY)%'
+    base_url: 'https://api.nexus.inverge.net'
+    timeout: 10.0
+```
+
+Then autowire `NexusClient`:
+
+```php
+use Inverge\Nexus\NexusClient;
+
+final class OrderService
+{
+    public function __construct(private readonly NexusClient $nexus) {}
+
+    public function ship(Order $order): void
+    {
+        $this->nexus->realtime()->emit("orders:{$order->customerId}", 'status', ['state' => 'shipped']);
+    }
+}
+```
+
+## Bring your own HTTP client (PSR-18)
+
+The default transport uses cURL. To use Guzzle (or any PSR-18 client), inject a
+`Psr18Transport`:
+
+```php
+use GuzzleHttp\Client;
+use GuzzleHttp\Psr7\HttpFactory;
+use Inverge\Nexus\{Config, NexusClient};
+use Inverge\Nexus\Http\Psr18Transport;
+
+$factory = new HttpFactory();
+$transport = new Psr18Transport(new Client(['timeout' => 10]), $factory, $factory);
+
+$nexus = new NexusClient(new Config('nxs_live_xxx'), $transport);
+```
+
+## API surface
+
+| Resource | Methods |
+|---|---|
+| `realtime()` | `emit`, `broadcast`, `registerRoom`, `rooms`, `deleteRoom`, `link`, `unlink`, `schema`, `setSchema`, `enableSchema`, `clearSchema`, `related` |
+| `events()` | `capture`, `batch` |
+| `errors()` | `capture`, `captureException` |
+| `logs()` | `log`, `trace`, `debug`, `info`, `warn`, `error`, `fatal`, `batch` |
+| `sessions()` | `identify`, `track` |
+| `flags()` | `evaluate`, `isEnabled`, `variant`, `payload` |
+| `links()` | `attribute` |
+
+Every call throws `Inverge\Nexus\Exception\ApiException` on a non-2xx response
+(with `->status`, `->errorCode`, `->details`) and `TransportException` on a
+network failure — both extend `NexusException`.
+
+## Development
+
+```bash
+composer install
+composer test   # vendor/bin/phpunit
+```
+
+MIT licensed.
