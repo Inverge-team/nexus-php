@@ -25,8 +25,17 @@ use Inverge\Nexus\NexusClient;
 
 $nexus = NexusClient::create('nxs_live_xxx'); // or pass ['base_url' => '...', 'timeout' => 10]
 
-// Realtime: broadcast to everyone in a room
+// Realtime: emit to a room
 $nexus->realtime()->emit('orders:42', 'status', ['state' => 'shipped']);
+
+// ...to several rooms with the same event, in one request
+$nexus->realtime()->emitToRooms(['orders:1', 'orders:2'], 'location', ['lat' => 36.2, 'lng' => 43.9]);
+
+// ...or fully custom per room/events/payload in one request
+$nexus->realtime()->broadcast([
+    ['room' => 'orders:1', 'event' => 'location', 'payload' => ['lat' => 1]],
+    ['room' => 'orders:2', 'events' => ['location', 'eta'], 'payload' => ['lat' => 2]],
+]);
 
 // Analytics
 $nexus->events()->capture('order_placed', ['total' => 42.0], ['distinctId' => 'user_1']);
@@ -249,7 +258,7 @@ $nexus = new NexusClient(new Config('nxs_live_xxx'), $transport);
 
 | Resource | Methods |
 |---|---|
-| `realtime()` | `emit`, `broadcast`, `registerRoom`, `rooms`, `deleteRoom`, `link`, `unlink`, `schema`, `setSchema`, `enableSchema`, `clearSchema`, `related` |
+| `realtime()` | `emit`, `emitToRooms`, `broadcast`, `registerRoom`, `rooms`, `deleteRoom`, `link`, `unlink`, `schema`, `setSchema`, `enableSchema`, `clearSchema`, `related` |
 | `events()` | `capture`, `batch` |
 | `errors()` | `capture`, `captureException` |
 | `logs()` | `log`, `trace`, `debug`, `info`, `warn`, `error`, `fatal`, `batch` |

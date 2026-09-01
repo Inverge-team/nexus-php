@@ -21,14 +21,15 @@ final class Realtime extends AbstractResource
     public function emit(string $room, string|array $events, mixed $payload = null): array
     {
         return $this->client->request('POST', '/partner/rooms/' . rawurlencode($room) . '/emit', [
-            'events' => is_array($events) ? array_values($events) : [$events],
+            'events' => $this->normalizeEvents($events),
             'payload' => $payload,
         ]) ?? [];
     }
 
     /**
-     * Emit to many rooms in one request. Each message: `['room' => string,
-     * 'event' => string|list<string>, 'payload' => mixed]`.
+     * Broadcast to many rooms (each with its own events/payload) in one request.
+     * Each message: `['room' => string, 'event' => string|list<string>, 'payload' => mixed]`
+     * (`name`/`events` are also accepted).
      *
      * @param list<array{room?:string,name?:string,event?:mixed,events?:mixed,payload?:mixed}> $messages
      *
@@ -36,9 +37,38 @@ final class Realtime extends AbstractResource
      */
     public function broadcast(array $messages): array
     {
-        return $this->client->request('POST', '/partner/rooms/emit', [
-            'rooms' => array_values($messages),
-        ]) ?? [];
+        $rooms = [];
+        foreach ($messages as $message) {
+            $rooms[] = [
+                'name' => (string) ($message['room'] ?? $message['name'] ?? ''),
+                'events' => $this->normalizeEvents($message['events'] ?? $message['event'] ?? []),
+                'payload' => $message['payload'] ?? null,
+            ];
+        }
+
+        return $this->client->request('POST', '/partner/rooms/emit', ['rooms' => $rooms]) ?? [];
+    }
+
+    /**
+     * Emit the same event(s) + payload to several rooms in a single request.
+     *
+     * ```php
+     * $nexus->realtime()->emitToRooms(['orders:1', 'orders:2'], 'location', $payload);
+     * ```
+     *
+     * @param list<string>         $rooms
+     * @param string|list<string>  $events
+     *
+     * @return array<mixed> { ok, count, results }
+     */
+    public function emitToRooms(array $rooms, string|array $events, mixed $payload = null): array
+    {
+        $messages = [];
+        foreach ($rooms as $room) {
+            $messages[] = ['room' => (string) $room, 'events' => $events, 'payload' => $payload];
+        }
+
+        return $this->broadcast($messages);
     }
 
     /**
@@ -121,5 +151,15 @@ final class Realtime extends AbstractResource
     public function related(string $name): array
     {
         return $this->client->request('GET', '/partner/rooms/' . rawurlencode($name) . '/related') ?? [];
+    }
+
+    /**
+     * @param string|list<string> $events
+     *
+     * @return list<string>
+     */
+    private function normalizeEvents(string|array $events): array
+    {
+        return is_string($events) ? [$events] : array_values($events);
     }
 }

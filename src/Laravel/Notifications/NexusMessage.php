@@ -74,6 +74,31 @@ final class NexusMessage
         return $this;
     }
 
+    /**
+     * Emit the same event(s) + payload to several rooms in one request.
+     *
+     * @param list<string>        $rooms
+     * @param string|list<string> $events
+     */
+    public function emitToRooms(array $rooms, string|array $events, mixed $payload = null): self
+    {
+        $this->ops[] = ['emitToRooms', ['rooms' => $rooms, 'events' => $events, 'payload' => $payload]];
+
+        return $this;
+    }
+
+    /**
+     * Broadcast to many rooms, each with its own events/payload, in one request.
+     *
+     * @param list<array<string, mixed>> $messages
+     */
+    public function broadcast(array $messages): self
+    {
+        $this->ops[] = ['broadcast', ['messages' => $messages]];
+
+        return $this;
+    }
+
     /** @param array<string, mixed> $context */
     public function log(string $level, string $message, array $context = []): self
     {
@@ -160,6 +185,8 @@ final class NexusMessage
             match ($type) {
                 'event' => $client->events()->capture($args['name'], $args['properties'], $this->identityOptions()),
                 'emit' => $client->realtime()->emit($args['room'], $args['events'], $args['payload']),
+                'emitToRooms' => $client->realtime()->emitToRooms($args['rooms'], $args['events'], $args['payload']),
+                'broadcast' => $client->realtime()->broadcast($args['messages']),
                 'log' => $client->logs()->log(
                     $args['level'],
                     $args['message'],

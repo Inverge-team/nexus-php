@@ -37,18 +37,44 @@ final class NexusClientTest extends TestCase
         $this->assertSame(['state' => 'shipped'], $req['json']['payload']);
     }
 
-    public function testRealtimeBroadcastWrapsRooms(): void
+    public function testRealtimeBroadcastNormalisesEachMessage(): void
     {
         [$nexus, $transport] = $this->make(new ApiResponse(200, json_encode(['ok' => true, 'count' => 2])));
 
         $nexus->realtime()->broadcast([
             ['room' => 'orders:1', 'event' => 'location', 'payload' => ['lat' => 1]],
-            ['room' => 'orders:2', 'event' => 'location', 'payload' => ['lat' => 2]],
+            ['name' => 'orders:2', 'events' => ['location', 'eta'], 'payload' => ['lat' => 2]],
         ]);
 
         $req = $transport->lastRequest();
         $this->assertSame('https://api.example.test/partner/rooms/emit', $req['url']);
-        $this->assertCount(2, $req['json']['rooms']);
+        $rooms = $req['json']['rooms'];
+        $this->assertCount(2, $rooms);
+        // room -> name, single event -> events[]
+        $this->assertSame('orders:1', $rooms[0]['name']);
+        $this->assertSame(['location'], $rooms[0]['events']);
+        $this->assertSame(['lat' => 1], $rooms[0]['payload']);
+        // multiple events preserved
+        $this->assertSame('orders:2', $rooms[1]['name']);
+        $this->assertSame(['location', 'eta'], $rooms[1]['events']);
+    }
+
+    public function testEmitToRoomsFansOutSameEvents(): void
+    {
+        [$nexus, $transport] = $this->make(new ApiResponse(200, json_encode(['ok' => true, 'count' => 3])));
+
+        $payload = ['lat' => 36.2, 'lng' => 43.9];
+        $nexus->realtime()->emitToRooms(['orders:1', 'orders:2', 'orders:3'], 'location', $payload);
+
+        $req = $transport->lastRequest();
+        $this->assertSame('https://api.example.test/partner/rooms/emit', $req['url']);
+        $rooms = $req['json']['rooms'];
+        $this->assertCount(3, $rooms);
+        foreach ($rooms as $i => $room) {
+            $this->assertSame('orders:' . ($i + 1), $room['name']);
+            $this->assertSame(['location'], $room['events']);
+            $this->assertSame($payload, $room['payload']);
+        }
     }
 
     public function testEventsCaptureBuildsBatch(): void
