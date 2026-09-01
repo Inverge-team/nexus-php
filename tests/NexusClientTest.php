@@ -8,6 +8,7 @@ use Inverge\Nexus\Config;
 use Inverge\Nexus\Exception\ApiException;
 use Inverge\Nexus\Http\ApiResponse;
 use Inverge\Nexus\NexusClient;
+use Inverge\Nexus\RoomMessage;
 use Inverge\Nexus\Tests\Support\FakeTransport;
 use PHPUnit\Framework\TestCase;
 
@@ -56,6 +57,33 @@ final class NexusClientTest extends TestCase
         $this->assertSame(['lat' => 1], $rooms[0]['payload']);
         // multiple events preserved
         $this->assertSame('orders:2', $rooms[1]['name']);
+        $this->assertSame(['location', 'eta'], $rooms[1]['events']);
+    }
+
+    public function testEmitAcceptsRoomMessageDto(): void
+    {
+        [$nexus, $transport] = $this->make(new ApiResponse(200, json_encode(['ok' => true])));
+
+        $nexus->realtime()->emit(new RoomMessage('orders:42', ['status', 'eta'], ['state' => 'shipped']));
+
+        $req = $transport->lastRequest();
+        $this->assertSame('https://api.example.test/partner/rooms/orders%3A42/emit', $req['url']);
+        $this->assertSame(['status', 'eta'], $req['json']['events']);
+        $this->assertSame(['state' => 'shipped'], $req['json']['payload']);
+    }
+
+    public function testBroadcastAcceptsRoomMessageDtos(): void
+    {
+        [$nexus, $transport] = $this->make(new ApiResponse(200, json_encode(['ok' => true, 'count' => 2])));
+
+        $nexus->realtime()->broadcast([
+            new RoomMessage('orders:1', 'location', ['lat' => 1]),
+            RoomMessage::make('orders:2', ['location', 'eta'], ['lat' => 2]),
+        ]);
+
+        $rooms = $transport->lastRequest()['json']['rooms'];
+        $this->assertSame('orders:1', $rooms[0]['name']);
+        $this->assertSame(['location'], $rooms[0]['events']);
         $this->assertSame(['location', 'eta'], $rooms[1]['events']);
     }
 

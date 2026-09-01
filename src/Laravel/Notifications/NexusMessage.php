@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Inverge\Nexus\Laravel\Notifications;
 
 use Inverge\Nexus\NexusClient;
+use Inverge\Nexus\RoomMessage;
 
 /**
  * The message a notification's `toNexus()` returns. A fluent builder that can
@@ -66,10 +67,14 @@ final class NexusMessage
         return $this;
     }
 
-    /** @param string|list<string> $events */
-    public function emit(string $room, string|array $events, mixed $payload = null): self
+    /**
+     * @param RoomMessage|string  $room
+     * @param string|list<string> $events
+     */
+    public function emit(RoomMessage|string $room, string|array $events = [], mixed $payload = null): self
     {
-        $this->ops[] = ['emit', ['room' => $room, 'events' => $events, 'payload' => $payload]];
+        $message = $room instanceof RoomMessage ? $room : new RoomMessage($room, $events, $payload);
+        $this->ops[] = ['emit', ['message' => $message]];
 
         return $this;
     }
@@ -184,7 +189,7 @@ final class NexusMessage
         foreach ($this->ops as [$type, $args]) {
             match ($type) {
                 'event' => $client->events()->capture($args['name'], $args['properties'], $this->identityOptions()),
-                'emit' => $client->realtime()->emit($args['room'], $args['events'], $args['payload']),
+                'emit' => $client->realtime()->emit($args['message']),
                 'emitToRooms' => $client->realtime()->emitToRooms($args['rooms'], $args['events'], $args['payload']),
                 'broadcast' => $client->realtime()->broadcast($args['messages']),
                 'log' => $client->logs()->log(

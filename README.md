@@ -31,11 +31,16 @@ $nexus->realtime()->emit('orders:42', 'status', ['state' => 'shipped']);
 // ...to several rooms with the same event, in one request
 $nexus->realtime()->emitToRooms(['orders:1', 'orders:2'], 'location', ['lat' => 36.2, 'lng' => 43.9]);
 
-// ...or fully custom per room/events/payload in one request
+// ...or fully custom per room/events/payload in one request — using the RoomMessage DTO
+use Inverge\Nexus\RoomMessage;
+
+$nexus->realtime()->emit(new RoomMessage('orders:42', 'status', ['state' => 'shipped']));
 $nexus->realtime()->broadcast([
-    ['room' => 'orders:1', 'event' => 'location', 'payload' => ['lat' => 1]],
-    ['room' => 'orders:2', 'events' => ['location', 'eta'], 'payload' => ['lat' => 2]],
+    new RoomMessage('orders:1', 'location', ['lat' => 1]),
+    new RoomMessage('orders:2', ['location', 'eta'], ['lat' => 2]),
 ]);
+
+// loose arrays (['room'|'name', 'event'|'events', 'payload']) still work for broadcast()
 
 // Analytics
 $nexus->events()->capture('order_placed', ['total' => 42.0], ['distinctId' => 'user_1']);

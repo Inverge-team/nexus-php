@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Inverge\Nexus\Resource;
 
+use Inverge\Nexus\RoomMessage;
+
 /**
  * Realtime (rooms) — server-side emit + room management over the `/partner/rooms`
  * HTTP surface. Emitting broadcasts to every client currently joined to the room.
@@ -11,39 +13,39 @@ namespace Inverge\Nexus\Resource;
 final class Realtime extends AbstractResource
 {
     /**
-     * Emit one or more named events to a room.
+     * Emit one or more named events to a room. Pass a {@see RoomMessage}, or a
+     * room name plus events/payload.
      *
-     * @param string|list<string> $events
-     * @param mixed                $payload JSON-serialisable payload
+     * @param RoomMessage|string   $room    a message, or the room name
+     * @param string|list<string>  $events  events (ignored when $room is a RoomMessage)
+     * @param mixed                $payload JSON-serialisable payload (ignored when $room is a RoomMessage)
      *
      * @return array<mixed> the ack: { ok, room, related, events, recipients }
      */
-    public function emit(string $room, string|array $events, mixed $payload = null): array
+    public function emit(RoomMessage|string $room, string|array $events = [], mixed $payload = null): array
     {
-        return $this->client->request('POST', '/partner/rooms/' . rawurlencode($room) . '/emit', [
-            'events' => $this->normalizeEvents($events),
-            'payload' => $payload,
+        $message = $room instanceof RoomMessage ? $room : new RoomMessage($room, $events, $payload);
+
+        return $this->client->request('POST', '/partner/rooms/' . rawurlencode($message->room) . '/emit', [
+            'events' => $message->events,
+            'payload' => $message->payload,
         ]) ?? [];
     }
 
     /**
      * Broadcast to many rooms (each with its own events/payload) in one request.
-     * Each message: `['room' => string, 'event' => string|list<string>, 'payload' => mixed]`
-     * (`name`/`events` are also accepted).
+     * Each item is a {@see RoomMessage} or a loose array (`room`/`name`,
+     * `event`/`events`, `payload`).
      *
-     * @param list<array{room?:string,name?:string,event?:mixed,events?:mixed,payload?:mixed}> $messages
+     * @param iterable<RoomMessage|array<string, mixed>> $messages
      *
      * @return array<mixed> { ok, count, results }
      */
-    public function broadcast(array $messages): array
+    public function broadcast(iterable $messages): array
     {
         $rooms = [];
         foreach ($messages as $message) {
-            $rooms[] = [
-                'name' => (string) ($message['room'] ?? $message['name'] ?? ''),
-                'events' => $this->normalizeEvents($message['events'] ?? $message['event'] ?? []),
-                'payload' => $message['payload'] ?? null,
-            ];
+            $rooms[] = ($message instanceof RoomMessage ? $message : RoomMessage::fromArray($message))->toArray();
         }
 
         return $this->client->request('POST', '/partner/rooms/emit', ['rooms' => $rooms]) ?? [];
@@ -65,7 +67,7 @@ final class Realtime extends AbstractResource
     {
         $messages = [];
         foreach ($rooms as $room) {
-            $messages[] = ['room' => (string) $room, 'events' => $events, 'payload' => $payload];
+            $messages[] = new RoomMessage((string) $room, $events, $payload);
         }
 
         return $this->broadcast($messages);
@@ -151,15 +153,5 @@ final class Realtime extends AbstractResource
     public function related(string $name): array
     {
         return $this->client->request('GET', '/partner/rooms/' . rawurlencode($name) . '/related') ?? [];
-    }
-
-    /**
-     * @param string|list<string> $events
-     *
-     * @return list<string>
-     */
-    private function normalizeEvents(string|array $events): array
-    {
-        return is_string($events) ? [$events] : array_values($events);
     }
 }
