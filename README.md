@@ -81,6 +81,46 @@ class OrderController
 }
 ```
 
+### Notifications
+
+Drive Nexus from your notification classes — add the channel to `via()` and
+return a `NexusMessage` from `toNexus()`:
+
+```php
+use Illuminate\Notifications\Notification;
+use Inverge\Nexus\Laravel\Notifications\NexusChannel;
+use Inverge\Nexus\Laravel\Notifications\NexusMessage;
+
+class OrderShipped extends Notification // implements ShouldQueue to deliver off-request
+{
+    public function __construct(private Order $order) {}
+
+    public function via(object $notifiable): array
+    {
+        return [NexusChannel::class]; // or 'nexus'
+    }
+
+    public function toNexus(object $notifiable): NexusMessage
+    {
+        return NexusMessage::create()
+            ->event('order_shipped', ['order' => $this->order->id])
+            ->emit("orders:{$this->order->customer_id}", 'status', ['state' => 'shipped'])
+            ->info("Order {$this->order->id} shipped");
+        // also: ->captureError(...), ->captureException($e), ->warning(...), ->to($distinctId)
+    }
+}
+```
+
+One message can do several things at once (event + emit + log + error). The
+notifiable's identity is applied automatically if it exposes it:
+
+```php
+public function routeNotificationForNexus(object $notification): string
+{
+    return (string) $this->id; // distinctId — or return an identity array
+}
+```
+
 ## Symfony
 
 Register the bundle in `config/bundles.php`:

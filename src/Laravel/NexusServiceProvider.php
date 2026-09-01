@@ -7,7 +7,9 @@ namespace Inverge\Nexus\Laravel;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
 use Inverge\Nexus\Config;
+use Illuminate\Notifications\ChannelManager;
 use Inverge\Nexus\Http\SyncDispatcher;
+use Inverge\Nexus\Laravel\Notifications\NexusChannel;
 use Inverge\Nexus\Monolog\NexusLogHandler;
 use Inverge\Nexus\NexusClient;
 use Monolog\Level;
@@ -61,7 +63,23 @@ final class NexusServiceProvider extends ServiceProvider
             $this->commands([NexusTestCommand::class]);
         }
 
+        $this->registerNotificationChannel();
         $this->attachLogHandler();
+    }
+
+    /**
+     * Register the `'nexus'` notification driver so `via()` can return `'nexus'`.
+     * (Referencing NexusChannel::class in `via()` already works without this.)
+     */
+    private function registerNotificationChannel(): void
+    {
+        if (!class_exists(ChannelManager::class)) {
+            return;
+        }
+
+        $this->app->resolving(ChannelManager::class, static function (ChannelManager $manager, $app): void {
+            $manager->extend('nexus', static fn ($app) => $app->make(NexusChannel::class));
+        });
     }
 
     private function attachLogHandler(): void

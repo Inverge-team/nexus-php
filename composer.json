@@ -3,7 +3,7 @@
     "description": "Official PHP SDK for the Inverge Nexus platform — realtime, events, errors, logs, feature flags, links, sessions. Framework-agnostic with first-class Laravel and Symfony integrations.",
     "type": "library",
     "license": "MIT",
-    "keywords": ["nexus", "inverge", "realtime", "websocket", "analytics", "feature-flags", "laravel", "symfony", "sdk"],
+    "keywords": ["nexus", "inverge", "realtime", "websocket", "analytics", "feature-flags", "laravel", "symfony", "links", "sessions", "sdk"],
     "homepage": "https://nexus.inverge.net",
     "authors": [
         { "name": "Inverge", "homepage": "https://inverge.net" }
