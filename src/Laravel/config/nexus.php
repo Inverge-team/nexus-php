@@ -9,7 +9,7 @@ return [
     |--------------------------------------------------------------------------
     */
     'api_key' => env('NEXUS_API_KEY', ''),
-    'base_url' => env('NEXUS_BASE_URL', 'https://api.nexus.inverge.net'),
+    'base_url' => env('NEXUS_BASE_URL', 'https://nexus.inverge.net'),
     'timeout' => env('NEXUS_TIMEOUT', 10.0),
 
     /*

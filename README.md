@@ -59,6 +59,10 @@ $nexus->logs()->info('Payment captured', ['context' => ['order' => 42]]);
 if ($nexus->flags()->isEnabled('new_checkout', 'user_1')) {
     // ...
 }
+
+// Surveys — fetch the ones a user is eligible for, then submit answers
+$surveys = $nexus->surveys()->active(['distinctId' => 'user_1', 'properties' => ['plan' => 'pro']]);
+$nexus->surveys()->complete($surveys[0]['id'], ['q_1' => 9], ['distinctId' => 'user_1']);
 ```
 
 ## Laravel
@@ -67,7 +71,7 @@ Auto-discovered — just set the env vars:
 
 ```dotenv
 NEXUS_API_KEY=nxs_live_xxx
-NEXUS_BASE_URL=https://api.nexus.inverge.net
+NEXUS_BASE_URL=https://nexus.inverge.net
 ```
 
 Optionally publish the config: `php artisan vendor:publish --tag=nexus-config`.
@@ -148,7 +152,7 @@ Configure `config/packages/nexus.yaml`:
 ```yaml
 nexus:
     api_key: '%env(NEXUS_API_KEY)%'
-    base_url: 'https://api.nexus.inverge.net'
+    base_url: 'https://nexus.inverge.net'
     timeout: 10.0
 ```
 
@@ -270,6 +274,7 @@ $nexus = new NexusClient(new Config('nxs_live_xxx'), $transport);
 | `sessions()` | `identify`, `track` |
 | `flags()` | `evaluate`, `isEnabled`, `variant`, `payload` |
 | `links()` | `attribute` |
+| `surveys()` | `active`, `respond`, `complete`, `dismiss` |
 
 Every call throws `Inverge\Nexus\Exception\ApiException` on a non-2xx response
 (with `->status`, `->errorCode`, `->details`) and `TransportException` on a

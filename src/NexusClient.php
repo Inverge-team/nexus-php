@@ -16,6 +16,7 @@ use Inverge\Nexus\Resource\Links;
 use Inverge\Nexus\Resource\Logs;
 use Inverge\Nexus\Resource\Realtime;
 use Inverge\Nexus\Resource\Sessions;
+use Inverge\Nexus\Resource\Surveys;
 
 /**
  * The Nexus server-side SDK. Framework-agnostic: construct once with an API key
@@ -39,6 +40,7 @@ final class NexusClient
     private Sessions $sessions;
     private Flags $flags;
     private Links $links;
+    private Surveys $surveys;
 
     /**
      * @param Transport|null  $transport   transport for the default sync dispatcher (ignored if $dispatcher is given)
@@ -58,6 +60,7 @@ final class NexusClient
         $this->sessions = new Sessions($this);
         $this->flags = new Flags($this);
         $this->links = new Links($this);
+        $this->surveys = new Surveys($this);
     }
 
     /**
@@ -113,6 +116,11 @@ final class NexusClient
     public function links(): Links
     {
         return $this->links;
+    }
+
+    public function surveys(): Surveys
+    {
+        return $this->surveys;
     }
 
     public function config(): Config

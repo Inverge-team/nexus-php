@@ -152,6 +152,40 @@ final class NexusClientTest extends TestCase
         $this->assertArrayHasKey('filename', $req['json']['stack'][0]);
     }
 
+    public function testSurveysActiveAndRespond(): void
+    {
+        [$nexus, $transport] = $this->make(
+            new ApiResponse(200, json_encode(['surveys' => [['id' => 's_1', 'name' => 'NPS']]])),
+            new ApiResponse(202, json_encode(['id' => 'r_1', 'completed' => true])),
+        );
+
+        $surveys = $nexus->surveys()->active(['distinctId' => 'u_1', 'properties' => ['plan' => 'pro']]);
+        $this->assertSame('s_1', $surveys[0]['id']);
+        $activeReq = $transport->requests[0];
+        $this->assertSame('https://api.example.test/partner/surveys/active', $activeReq['url']);
+        $this->assertSame(['plan' => 'pro'], $activeReq['json']['properties']);
+
+        $res = $nexus->surveys()->complete('s_1', ['q_1' => 9], ['distinctId' => 'u_1']);
+        $this->assertTrue($res['completed']);
+        $respondReq = $transport->requests[1];
+        $this->assertSame('https://api.example.test/partner/surveys/responses', $respondReq['url']);
+        $this->assertSame('s_1', $respondReq['json']['surveyId']);
+        $this->assertSame(['q_1' => 9], $respondReq['json']['answers']);
+        $this->assertTrue($respondReq['json']['completed']);
+    }
+
+    public function testSurveyDismissSendsAnswersAsObject(): void
+    {
+        [$nexus, $transport] = $this->make(new ApiResponse(202, json_encode(['id' => 'r_2'])));
+
+        $nexus->surveys()->dismiss('s_1', ['distinctId' => 'u_1']);
+
+        $req = $transport->lastRequest();
+        $this->assertTrue($req['json']['dismissed']);
+        // Empty answers must be an object ({}), not [] — the API validates it.
+        $this->assertInstanceOf(\stdClass::class, $req['json']['answers']);
+    }
+
     public function testNonSuccessThrowsApiException(): void
     {
         [$nexus] = $this->make(new ApiResponse(400, json_encode([
