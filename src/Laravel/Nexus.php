@@ -22,6 +22,7 @@ use Illuminate\Support\Facades\Facade;
  * @method static \Inverge\Nexus\Resource\Flags     flags()
  * @method static \Inverge\Nexus\Resource\Links     links()
  * @method static \Inverge\Nexus\Resource\Surveys   surveys()
+ * @method static \Inverge\Nexus\Resource\RemoteConfig remoteConfig()
  *
  * @see \Inverge\Nexus\NexusClient
  */

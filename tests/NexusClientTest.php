@@ -212,4 +212,45 @@ final class NexusClientTest extends TestCase
         $req = $transport->lastRequest();
         $this->assertSame(['distinctId' => 'u_1'], $req['json']);
     }
+
+    public function testRemoteConfigFetchSendsContextAndReturnsResolvedValues(): void
+    {
+        [$nexus, $transport] = $this->make(new ApiResponse(200, json_encode([
+            'version' => 4,
+            'etag' => 'abc',
+            'notModified' => false,
+            'parameters' => [
+                'welcome' => ['value' => 'Hi iPhone', 'valueType' => 'STRING', 'source' => 'iOS users'],
+                'max' => ['value' => 10, 'valueType' => 'NUMBER', 'source' => null],
+            ],
+        ])));
+
+        $result = $nexus->remoteConfig()->fetch(
+            ['appInstanceId' => 'dev_1', 'platform' => 'ios', 'appVersion' => '2.1.0'],
+            'prev-etag',
+        );
+
+        $this->assertSame(4, $result['version']);
+        $req = $transport->lastRequest();
+        $this->assertSame('POST', $req['method']);
+        $this->assertSame('https://api.example.test/partner/remote-config/fetch', $req['url']);
+        $this->assertSame('ios', $req['json']['platform']);
+        $this->assertSame('2.1.0', $req['json']['appVersion']);
+        $this->assertSame('prev-etag', $req['headers']['If-None-Match']);
+    }
+
+    public function testRemoteConfigAllFlattensParametersToKeyValue(): void
+    {
+        [$nexus] = $this->make(new ApiResponse(200, json_encode([
+            'version' => 1,
+            'etag' => 'e',
+            'notModified' => false,
+            'parameters' => [
+                'welcome' => ['value' => 'Hi', 'valueType' => 'STRING', 'source' => null],
+                'flag' => ['value' => true, 'valueType' => 'BOOLEAN', 'source' => 'beta'],
+            ],
+        ])));
+
+        $this->assertSame(['welcome' => 'Hi', 'flag' => true], $nexus->remoteConfig()->all());
+    }
 }

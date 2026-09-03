@@ -14,6 +14,7 @@ use Inverge\Nexus\Resource\Events;
 use Inverge\Nexus\Resource\Flags;
 use Inverge\Nexus\Resource\Links;
 use Inverge\Nexus\Resource\Logs;
+use Inverge\Nexus\Resource\RemoteConfig;
 use Inverge\Nexus\Resource\Realtime;
 use Inverge\Nexus\Resource\Sessions;
 use Inverge\Nexus\Resource\Surveys;
@@ -41,6 +42,7 @@ final class NexusClient
     private Flags $flags;
     private Links $links;
     private Surveys $surveys;
+    private RemoteConfig $remoteConfig;
 
     /**
      * @param Transport|null  $transport   transport for the default sync dispatcher (ignored if $dispatcher is given)
@@ -61,6 +63,7 @@ final class NexusClient
         $this->flags = new Flags($this);
         $this->links = new Links($this);
         $this->surveys = new Surveys($this);
+        $this->remoteConfig = new RemoteConfig($this);
     }
 
     /**
@@ -121,6 +124,11 @@ final class NexusClient
     public function surveys(): Surveys
     {
         return $this->surveys;
+    }
+
+    public function remoteConfig(): RemoteConfig
+    {
+        return $this->remoteConfig;
     }
 
     public function config(): Config
