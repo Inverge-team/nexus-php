@@ -1,290 +1,394 @@
-# Nexus PHP SDK
+# Nexus PHP SDK — Full Reference
 
-Official **server-side** PHP SDK for the [Inverge Nexus](https://nexus.inverge.net)
-platform — realtime, product analytics, error monitoring, structured logs,
-feature flags, deep-link attribution and the sessions spine.
+`inverge/nexus` is the server‑side client for the Inverge Nexus platform:
+**realtime messaging, product analytics, structured logging, error monitoring,
+sessions, feature flags, remote config, deep‑link attribution, and surveys** —
+from plain PHP, Laravel, or Symfony.
 
-Framework-agnostic core (zero required dependencies beyond `ext-curl`) with
-first-class **Laravel** and **Symfony** integrations. Works in any PHP app —
-native, Laravel, Symfony, Slim, WordPress, …
+- Package: `inverge/nexus`
+- PHP: `>= 8.1`
 
-- PHP **8.1+**
-- Talks to the `x-api-key`-authenticated `/partner/*` HTTP API
-- Bring-your-own HTTP client (any PSR-18) or use the built-in cURL transport
+---
 
-## Install
+## Table of contents
+
+1. [Installation](#1-installation)
+2. [Plain PHP setup](#2-plain-php-setup)
+3. [Laravel setup](#3-laravel-setup)
+4. [Symfony setup](#4-symfony-setup)
+5. [Dispatchers (sync vs queued)](#5-dispatchers-sync-vs-queued)
+6. [Sessions](#6-sessions)
+7. [Events](#7-events)
+8. [Logs](#8-logs)
+9. [Errors](#9-errors)
+10. [Feature flags](#10-feature-flags)
+11. [Remote Config](#11-remote-config)
+12. [Deep links & attribution](#12-deep-links--attribution)
+13. [Realtime](#13-realtime)
+14. [Surveys](#14-surveys)
+15. [Monolog handler](#15-monolog-handler)
+16. [Low‑level request](#16-low-level-request)
+
+---
+
+## 1. Installation
 
 ```bash
 composer require inverge/nexus
 ```
 
-## Quick start (any PHP)
+---
+
+## 2. Plain PHP setup
 
 ```php
 use Inverge\Nexus\NexusClient;
+use Inverge\Nexus\Config;
 
-$nexus = NexusClient::create('nxs_live_xxx'); // or pass ['base_url' => '...', 'timeout' => 10]
+$nexus = new NexusClient(new Config(
+    apiKey: 'nxs_live_xxx',
+    baseUrl: 'https://nexus.inverge.net',  // optional
+    timeout: 10.0,                          // optional (seconds)
+    defaultHeaders: [],                     // optional
+));
 
-// Realtime: emit to a room
-$nexus->realtime()->emit('orders:42', 'status', ['state' => 'shipped']);
-
-// ...to several rooms with the same event, in one request
-$nexus->realtime()->emitToRooms(['orders:1', 'orders:2'], 'location', ['lat' => 36.2, 'lng' => 43.9]);
-
-// ...or fully custom per room/events/payload in one request — using the RoomMessage DTO
-use Inverge\Nexus\RoomMessage;
-
-$nexus->realtime()->emit(new RoomMessage('orders:42', 'status', ['state' => 'shipped']));
-$nexus->realtime()->broadcast([
-    new RoomMessage('orders:1', 'location', ['lat' => 1]),
-    new RoomMessage('orders:2', ['location', 'eta'], ['lat' => 2]),
-]);
-
-// loose arrays (['room'|'name', 'event'|'events', 'payload']) still work for broadcast()
-
-// Analytics
 $nexus->events()->capture('order_placed', ['total' => 42.0], ['distinctId' => 'user_1']);
-
-// Errors
-try {
-    // ...
-} catch (\Throwable $e) {
-    $nexus->errors()->captureException($e, ['distinctId' => 'user_1']);
-}
-
-// Logs
-$nexus->logs()->info('Payment captured', ['context' => ['order' => 42]]);
-
-// Feature flags
-if ($nexus->flags()->isEnabled('new_checkout', 'user_1')) {
-    // ...
-}
-
-// Surveys — fetch the ones a user is eligible for, then submit answers
-$surveys = $nexus->surveys()->active(['distinctId' => 'user_1', 'properties' => ['plan' => 'pro']]);
-$nexus->surveys()->complete($surveys[0]['id'], ['q_1' => 9], ['distinctId' => 'user_1']);
 ```
 
-## Laravel
+`Config` fields: `apiKey` (required), `baseUrl`, `timeout`, `defaultHeaders`.
+`Config::fromArray('nxs_…', [...])` is also available.
 
-Auto-discovered — just set the env vars:
+Resources: `realtime()`, `events()`, `errors()`, `logs()`, `sessions()`,
+`flags()`, `links()`, `surveys()`, `remoteConfig()`. Plus `config()` and
+`request()`.
+
+---
+
+## 3. Laravel setup
+
+The service provider auto‑registers. Publish config if you want to tweak it:
+
+```bash
+php artisan vendor:publish --tag=nexus-config
+```
+
+`.env`:
 
 ```dotenv
 NEXUS_API_KEY=nxs_live_xxx
 NEXUS_BASE_URL=https://nexus.inverge.net
+NEXUS_TIMEOUT=10
+NEXUS_QUEUE=false            # true → dispatch telemetry on the queue
+NEXUS_QUEUE_CONNECTION=
+NEXUS_QUEUE_NAME=
+NEXUS_LOGGING=false          # true → forward Laravel logs to Nexus
+NEXUS_LOG_LEVEL=debug
+NEXUS_CAPTURE_ERRORS=true    # report unhandled exceptions automatically
 ```
 
-Optionally publish the config: `php artisan vendor:publish --tag=nexus-config`.
-
-Use the facade or inject the client:
+Use the facade anywhere:
 
 ```php
 use Inverge\Nexus\Laravel\Nexus;
 
 Nexus::realtime()->emit('orders:42', 'status', ['state' => 'shipped']);
 Nexus::events()->capture('order_placed', ['total' => 42], ['distinctId' => auth()->id()]);
+Nexus::remoteConfig()->all(['userProperties' => ['governorate' => 'Erbil']]);
 ```
 
-```php
-use Inverge\Nexus\NexusClient;
-
-class OrderController
-{
-    public function __construct(private NexusClient $nexus) {}
-
-    public function ship(Order $order): void
-    {
-        $this->nexus->realtime()->emit("orders:{$order->customer_id}", 'status', ['state' => 'shipped']);
-    }
-}
-```
-
-### Notifications
-
-Drive Nexus from your notification classes — add the channel to `via()` and
-return a `NexusMessage` from `toNexus()`:
-
-```php
-use Illuminate\Notifications\Notification;
-use Inverge\Nexus\Laravel\Notifications\NexusChannel;
-use Inverge\Nexus\Laravel\Notifications\NexusMessage;
-
-class OrderShipped extends Notification // implements ShouldQueue to deliver off-request
-{
-    public function __construct(private Order $order) {}
-
-    public function via(object $notifiable): array
-    {
-        return [NexusChannel::class]; // or 'nexus'
-    }
-
-    public function toNexus(object $notifiable): NexusMessage
-    {
-        return NexusMessage::create()
-            ->event('order_shipped', ['order' => $this->order->id])
-            ->emit("orders:{$this->order->customer_id}", 'status', ['state' => 'shipped'])
-            ->info("Order {$this->order->id} shipped");
-        // also: ->captureError(...), ->captureException($e), ->warning(...), ->to($distinctId)
-    }
-}
-```
-
-One message can do several things at once (event + emit + log + error). The
-notifiable's identity is applied automatically if it exposes it:
-
-```php
-public function routeNotificationForNexus(object $notification): string
-{
-    return (string) $this->id; // distinctId — or return an identity array
-}
-```
-
-## Symfony
-
-Register the bundle in `config/bundles.php`:
-
-```php
-Inverge\Nexus\Symfony\NexusBundle::class => ['all' => true],
-```
-
-Configure `config/packages/nexus.yaml`:
-
-```yaml
-nexus:
-    api_key: '%env(NEXUS_API_KEY)%'
-    base_url: 'https://nexus.inverge.net'
-    timeout: 10.0
-```
-
-Then autowire `NexusClient`:
-
-```php
-use Inverge\Nexus\NexusClient;
-
-final class OrderService
-{
-    public function __construct(private readonly NexusClient $nexus) {}
-
-    public function ship(Order $order): void
-    {
-        $this->nexus->realtime()->emit("orders:{$order->customerId}", 'status', ['state' => 'shipped']);
-    }
-}
-```
-
-## Log forwarding, auto error capture & queued delivery
-
-### Laravel
-
-Flip on log forwarding and automatic error capture with env vars:
-
-```dotenv
-NEXUS_LOGGING=true          # ship logs to Nexus Logs (batched)
-NEXUS_CAPTURE_ERRORS=true   # unhandled exceptions -> Nexus Errors (default true)
-NEXUS_QUEUE=true            # deliver via the queue instead of inline (optional)
-NEXUS_QUEUE_CONNECTION=redis
-NEXUS_QUEUE_NAME=default
-```
-
-With `NEXUS_LOGGING=true` the SDK attaches a Monolog handler to your default log
-channel: every `Log::info(...)` flows to Nexus (buffered into one batched request
-per request lifecycle), and any logged exception is reported to Nexus Errors with
-a full stacktrace. With `NEXUS_QUEUE=true` that delivery moves onto the queue so
-it never touches request latency.
-
-For fire-and-forget telemetry from your own code, resolve the queued client:
+Queued variant (offloads the HTTP call to a job):
 
 ```php
 app('nexus.queue')->events()->capture('order_placed', ['total' => 42], ['distinctId' => $userId]);
 ```
 
-### Symfony
+Unhandled exceptions are reported automatically when `NEXUS_CAPTURE_ERRORS=true`.
 
-Auto error capture is on by default — the bundle registers a `kernel.exception`
-subscriber. Toggle it in `config/packages/nexus.yaml`:
+---
 
-```yaml
-nexus:
-    api_key: '%env(NEXUS_API_KEY)%'
-    capture_errors: true
-```
+## 4. Symfony setup
 
-To forward logs, add the provided Monolog handler service in `config/packages/monolog.yaml`:
-
-```yaml
-monolog:
-    handlers:
-        nexus:
-            type: service
-            id: Inverge\Nexus\Monolog\NexusLogHandler
-```
-
-**Async delivery** (parity with Laravel's queue) — requires `symfony/messenger`:
+Register the bundle and configure it:
 
 ```yaml
 # config/packages/nexus.yaml
 nexus:
     api_key: '%env(NEXUS_API_KEY)%'
-    async: true            # dispatch telemetry (errors/logs) via Messenger
+    base_url: 'https://nexus.inverge.net'
 ```
 
-```yaml
-# config/packages/messenger.yaml — route the message to an async transport
-framework:
-    messenger:
-        routing:
-            'Inverge\Nexus\Symfony\Messenger\NexusDeliveryMessage': async
-```
+Inject `NexusClient` via autowiring; an exception subscriber reports uncaught
+exceptions, and a Messenger handler is available for async dispatch.
 
-With `async: true`, error capture and the log handler dispatch a
-`NexusDeliveryMessage` onto the bus; a bundled handler delivers it in the worker.
+---
 
-### Verify your setup (Laravel)
+## 5. Dispatchers (sync vs queued)
 
-```bash
-php artisan nexus:test              # checks config + auth (lists rooms)
-php artisan nexus:test --room=demo  # also emits a test event to the "demo" room
-```
-
-## Bring your own HTTP client (PSR-18)
-
-The default transport uses cURL. To use Guzzle (or any PSR-18 client), inject a
-`Psr18Transport`:
+The client sends requests through a **dispatcher**. Default is synchronous cURL.
+Swap it for a queued one (Laravel `QueueDispatcher`, Symfony
+`MessengerDispatcher`) so telemetry never blocks the request:
 
 ```php
-use GuzzleHttp\Client;
-use GuzzleHttp\Psr7\HttpFactory;
-use Inverge\Nexus\{Config, NexusClient};
-use Inverge\Nexus\Http\Psr18Transport;
-
-$factory = new HttpFactory();
-$transport = new Psr18Transport(new Client(['timeout' => 10]), $factory, $factory);
-
-$nexus = new NexusClient(new Config('nxs_live_xxx'), $transport);
+$queued = $nexus->withDispatcher($myDispatcher); // returns a new client
 ```
 
-## API surface
+You can also inject a custom PSR‑18 transport: `new NexusClient($config, $psr18Transport)`.
 
-| Resource | Methods |
-|---|---|
-| `realtime()` | `emit`, `emitToRooms`, `broadcast`, `registerRoom`, `rooms`, `deleteRoom`, `link`, `unlink`, `schema`, `setSchema`, `enableSchema`, `clearSchema`, `related` |
-| `events()` | `capture`, `batch` |
-| `errors()` | `capture`, `captureException` |
-| `logs()` | `log`, `trace`, `debug`, `info`, `warn`, `error`, `fatal`, `batch` |
-| `sessions()` | `identify`, `track` |
-| `flags()` | `evaluate`, `isEnabled`, `variant`, `payload` |
-| `links()` | `attribute` |
-| `surveys()` | `active`, `respond`, `complete`, `dismiss` |
+---
 
-Every call throws `Inverge\Nexus\Exception\ApiException` on a non-2xx response
-(with `->status`, `->errorCode`, `->details`) and `TransportException` on a
-network failure — both extend `NexusException`.
+## 6. Sessions
 
-## Development
+```php
+// Identify an end‑user:
+$nexus->sessions()->identify('user_123', [
+    'email'  => 'a@b.com',
+    'name'   => 'Ada',
+    'traits' => ['plan' => 'pro'],
+]);
 
-```bash
-composer install
-composer test   # vendor/bin/phpunit
+// Start/refresh a session:
+$nexus->sessions()->track([
+    'distinctId' => 'user_123',
+    'deviceKey'  => 'dev_abc',
+    'sessionKey' => 'sess_abc',
+    'country'    => 'IQ',
+]);
 ```
 
-MIT licensed.
+Returns the server payload (incl. `sessionId`).
+
+---
+
+## 7. Events
+
+```php
+// One event → returns the number written (0/1):
+$nexus->events()->capture('order_placed', ['total' => 42.0, 'currency' => 'USD'], [
+    'distinctId' => 'user_1',
+    'sessionKey' => 'sess_1',
+]);
+
+// A batch of events sharing one identity/context:
+$nexus->events()->batch([
+    ['name' => 'view',  'properties' => ['sku' => 'A1']],
+    ['name' => 'click', 'properties' => ['sku' => 'A1']],
+], ['distinctId' => 'user_1']);
+```
+
+`capture(string $name, array $properties = [], array $context = []): int`.
+Context keys: `distinctId, sessionKey, deviceKey, release, osType, osVersion,
+browser, appVersion, timestamp`.
+
+---
+
+## 8. Logs
+
+```php
+$nexus->logs()->info('payment started', ['source' => 'checkout']);
+$nexus->logs()->error('charge failed', ['context' => ['code' => 'declined']]);
+
+// Generic + all levels: trace, debug, info, warn, error, fatal
+$nexus->logs()->log('warn', 'retrying', ['context' => ['attempt' => 2]]);
+
+// Batch:
+$nexus->logs()->batch([
+    ['level' => 'info',  'message' => 'a'],
+    ['level' => 'error', 'message' => 'b'],
+], ['distinctId' => 'user_1']);
+```
+
+Each level method: `info(string $message, array $options = []): int`. Options
+include `source`, `context`, and the usual identity keys.
+
+---
+
+## 9. Errors
+
+```php
+// From a caught throwable (recommended):
+try {
+    doWork();
+} catch (\Throwable $e) {
+    $nexus->errors()->captureException($e, [
+        'handled' => true,
+        'level'   => 'error',
+        'context' => ['feature' => 'checkout'],
+        'distinctId' => 'user_1',
+    ]);
+}
+
+// Or a manual error:
+$nexus->errors()->capture('Payment gateway timeout', [
+    'type' => 'GatewayTimeout',
+    'level' => 'error',
+    'fingerprint' => 'gateway-timeout',
+]);
+```
+
+Options: `type, level, handled, fingerprint, stack, context, release, url,
+distinctId, sessionKey, deviceKey, osType, osVersion, browser, appVersion`.
+
+---
+
+## 10. Feature flags
+
+```php
+$nexus->flags()->isEnabled('new_checkout', 'user_1', ['plan' => 'pro']); // bool
+$nexus->flags()->variant('paywall', 'user_1');                           // ?string
+$nexus->flags()->payload('paywall', 'user_1');                           // mixed
+$all = $nexus->flags()->evaluate('user_1', ['plan' => 'pro']);           // full result
+```
+
+`evaluate(string $distinctId, array $properties = []): array` returns every
+flag; the others are convenience wrappers.
+
+---
+
+## 11. Remote Config
+
+Fetch the active, published template resolved for a context (conditions —
+platform, version, country, percentile, **custom attributes** — evaluated
+server‑side).
+
+```php
+// Flat key => value map:
+$config = $nexus->remoteConfig()->all([
+    'appVersion'     => '2.1.0',
+    'country'        => 'IQ',
+    'userProperties' => ['governorate' => 'Duhok'],
+]);
+$phone = $config['phone_number'];
+
+// A single value with a default:
+$phone = $nexus->remoteConfig()->get('phone_number', '+9640000000000', [
+    'userProperties' => ['governorate' => 'Erbil'],
+]);
+
+// Full result (version, etag, per‑parameter value + which condition supplied it):
+$result = $nexus->remoteConfig()->fetch(
+    ['userProperties' => ['governorate' => 'Duhok']],
+    $previousEtag, // optional If-None-Match; result['notModified'] === true when unchanged
+);
+// $result['parameters']['phone_number'] === ['value' => ..., 'valueType' => 'STRING', 'source' => 'Duhok']
+```
+
+Context keys: `appInstanceId, appVersion, appBuild, platform, osVersion,
+country, language, firstOpenTime, userProperties`. `userProperties` values must
+be primitives (strings/numbers/bools) and match condition values exactly.
+
+- `fetch(array $context = [], ?string $etag = null): array`
+- `all(array $context = []): array`
+- `get(string $key, mixed $default = null, array $context = []): mixed`
+
+---
+
+## 12. Deep links & attribution
+
+```php
+$data = $nexus->links()->attribute('install', [
+    'clickId'    => 'abc',
+    'name'       => 'summer_sale',
+    'platform'   => 'ios',
+    'distinctId' => 'user_1',
+    'properties' => ['campaign' => 'promo'],
+]);
+```
+
+`attribute(string $type, array $options = []): array`. Types: `install`, `open`,
+`reengagement`, … Options include `name, clickId, distinctId, deviceId,
+sessionKey, platform, osType, country, revenue, properties`.
+
+---
+
+## 13. Realtime
+
+Server‑to‑client fan‑out and room management over the data plane.
+
+```php
+use Inverge\Nexus\RoomMessage;
+
+// Emit one or more events to a room:
+$nexus->realtime()->emit('orders:42', 'status', ['state' => 'shipped']);
+$nexus->realtime()->emit('orders:42', ['status', 'updated'], ['state' => 'shipped']);
+
+// Emit with a RoomMessage value object:
+$nexus->realtime()->emit(new RoomMessage('orders:42', ['status'], ['state' => 'shipped']));
+
+// Batch many messages:
+$nexus->realtime()->broadcast([
+    new RoomMessage('room:a', ['ping'], ['n' => 1]),
+    new RoomMessage('room:b', ['ping'], ['n' => 2]),
+]);
+
+// Same payload to several rooms:
+$nexus->realtime()->emitToRooms(['a', 'b'], 'ping', ['n' => 1]);
+
+// Room management:
+$nexus->realtime()->registerRoom('orders', 'standard');
+$rooms = $nexus->realtime()->rooms();
+$nexus->realtime()->deleteRoom($roomId);
+$nexus->realtime()->related('orders');
+
+// Link / unlink related rooms:
+$nexus->realtime()->link($roomId, $relatedId);
+$nexus->realtime()->unlink($roomId, $relatedId);
+
+// Payload schema (validation):
+$nexus->realtime()->setSchema($roomId, ['type' => 'object', 'required' => ['state']]);
+$nexus->realtime()->enableSchema($roomId, true);
+$nexus->realtime()->schema($roomId);
+$nexus->realtime()->clearSchema($roomId);
+```
+
+---
+
+## 14. Surveys
+
+```php
+// Surveys a user is eligible for (targeting/sampling/capping applied):
+$surveys = $nexus->surveys()->active([
+    'distinctId' => 'user_1',
+    'properties' => ['plan' => 'pro'],
+    'osType'     => 'ios',
+]);
+
+// Submit a response (answers keyed by question id):
+$nexus->surveys()->respond('survey_1', ['q1' => 9, 'q2' => 'Great'], [
+    'completed'  => false,
+    'distinctId' => 'user_1',
+]);
+
+// Convenience wrappers:
+$nexus->surveys()->complete('survey_1', ['q1' => 9], ['distinctId' => 'user_1']);
+$nexus->surveys()->dismiss('survey_1', ['distinctId' => 'user_1']);
+```
+
+---
+
+## 15. Monolog handler
+
+Forward your app's Monolog records to Nexus logs:
+
+```php
+use Inverge\Nexus\Monolog\NexusLogHandler;
+
+$logger->pushHandler(new NexusLogHandler($nexus /*, level, bubble, flushAt */));
+```
+
+In Laravel, set `NEXUS_LOGGING=true` (and `NEXUS_LOG_LEVEL`) to wire this
+automatically.
+
+---
+
+## 16. Low‑level request
+
+For endpoints without a dedicated resource method:
+
+```php
+$response = $nexus->request('POST', '/partner/events', ['events' => [...]], [
+    'If-None-Match' => $etag, // extra headers
+]);
+```
+
+`request(string $method, string $path, ?array $json = null, array $headers = []): ?array`
+— returns the decoded body, or `null` on failure.
