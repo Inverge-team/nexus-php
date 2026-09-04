@@ -118,7 +118,7 @@ final class NexusServiceProvider extends ServiceProvider
 
         return new Config(
             apiKey: (string) ($c['api_key'] ?? ''),
-            baseUrl: (string) ($c['base_url'] ?? 'https://nexus.inverge.net'),
+            baseUrl: (string) ($c['base_url'] ?? 'https://services.inverge.net'),
             timeout: (float) ($c['timeout'] ?? 10.0),
         );
     }

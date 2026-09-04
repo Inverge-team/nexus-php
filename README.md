@@ -47,7 +47,7 @@ use Inverge\Nexus\Config;
 
 $nexus = new NexusClient(new Config(
     apiKey: 'nxs_live_xxx',
-    baseUrl: 'https://nexus.inverge.net',  // optional
+    baseUrl: 'https://services.inverge.net',  // optional
     timeout: 10.0,                          // optional (seconds)
     defaultHeaders: [],                     // optional
 ));
@@ -76,7 +76,7 @@ php artisan vendor:publish --tag=nexus-config
 
 ```dotenv
 NEXUS_API_KEY=nxs_live_xxx
-NEXUS_BASE_URL=https://nexus.inverge.net
+NEXUS_BASE_URL=https://services.inverge.net
 NEXUS_TIMEOUT=10
 NEXUS_QUEUE=false            # true → dispatch telemetry on the queue
 NEXUS_QUEUE_CONNECTION=
@@ -114,7 +114,7 @@ Register the bundle and configure it:
 # config/packages/nexus.yaml
 nexus:
     api_key: '%env(NEXUS_API_KEY)%'
-    base_url: 'https://nexus.inverge.net'
+    base_url: 'https://services.inverge.net'
 ```
 
 Inject `NexusClient` via autowiring; an exception subscriber reports uncaught
