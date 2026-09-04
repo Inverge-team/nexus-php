@@ -31,7 +31,7 @@ final class Configuration implements ConfigurationInterface
                     ->info('Project/environment API key (nxs_...).')
                 ->end()
                 ->scalarNode('base_url')
-                    ->defaultValue('https://nexus.inverge.net')
+                    ->defaultValue('https://services.inverge.net')
                     ->info('Nexus origin; partner endpoints live under /partner.')
                 ->end()
                 ->floatNode('timeout')

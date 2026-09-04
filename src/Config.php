@@ -15,7 +15,7 @@ final class Config
      */
     public function __construct(
         public readonly string $apiKey,
-        public readonly string $baseUrl = 'https://nexus.inverge.net',
+        public readonly string $baseUrl = 'https://services.inverge.net',
         public readonly float $timeout = 10.0,
         public readonly array $defaultHeaders = [],
     ) {
@@ -29,7 +29,7 @@ final class Config
     {
         return new self(
             apiKey: $apiKey,
-            baseUrl: (string) ($options['base_url'] ?? $options['baseUrl'] ?? 'https://nexus.inverge.net'),
+            baseUrl: (string) ($options['base_url'] ?? $options['baseUrl'] ?? 'https://services.inverge.net'),
             timeout: (float) ($options['timeout'] ?? 10.0),
             defaultHeaders: $options['headers'] ?? $options['default_headers'] ?? [],
         );
