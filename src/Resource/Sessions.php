@@ -13,7 +13,7 @@ final class Sessions extends AbstractResource
     /**
      * Identify (upsert) an end-user.
      *
-     * @param array{email?:string,name?:string,traits?:array<string,mixed>} $options
+     * @param array{email?:string,name?:string,phone?:string,traits?:array<string,mixed>} $options
      *
      * @return array<mixed>
      */
@@ -23,6 +23,7 @@ final class Sessions extends AbstractResource
             'distinctId' => $distinctId,
             'email' => $options['email'] ?? null,
             'name' => $options['name'] ?? null,
+            'phone' => $options['phone'] ?? null,
             'traits' => $options['traits'] ?? null,
         ])) ?? [];
     }
