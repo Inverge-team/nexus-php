@@ -4,13 +4,24 @@ declare(strict_types=1);
 
 namespace Inverge\Nexus\Resource;
 
+use Inverge\Nexus\Push\PushBuilder;
+
 /**
  * Push notifications. Server-side you mainly send transactional notifications to
- * specific users; campaigns, provider credentials, segments and templates are
+ * users or segments; campaigns, provider credentials, segments and templates are
  * managed in the Nexus console. Delivered via FCM / APNs / Web Push.
+ *
+ * Prefer the fluent builder for anything beyond a plain send:
+ * `$nexus->push()->notification()->title('…')->setSegments(['vip'])->send();`
  */
 final class Push extends AbstractResource
 {
+    /** Start a fluent push notification. */
+    public function notification(): PushBuilder
+    {
+        return new PushBuilder($this->client);
+    }
+
     /**
      * Send a transactional push to one or more users (by distinctId), delivered
      * across each user's registered devices.
@@ -30,14 +41,27 @@ final class Push extends AbstractResource
      */
     public function send(array $distinctIds, array $message): array
     {
-        return $this->client->request('POST', '/partner/push/send', $this->compact([
+        return $this->sendRaw($this->compact([
             'distinctIds' => $distinctIds,
             'title' => $message['title'] ?? null,
             'body' => $message['body'] ?? null,
             'imageUrl' => $message['imageUrl'] ?? null,
             'data' => ($message['data'] ?? null) ?: null,
             'options' => ($message['options'] ?? null) ?: null,
-        ])) ?? [];
+        ]));
+    }
+
+    /**
+     * Send a fully-assembled payload (title + targeting: distinctIds / segmentIds
+     * / filter / all). Used by the builder; call it directly if you prefer.
+     *
+     * @param array<string, mixed> $payload
+     *
+     * @return array<mixed> { sent, failed, recipients }
+     */
+    public function sendRaw(array $payload): array
+    {
+        return $this->client->request('POST', '/partner/push/send', $payload) ?? [];
     }
 
     /**

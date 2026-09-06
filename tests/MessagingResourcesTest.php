@@ -59,6 +59,59 @@ final class MessagingResourcesTest extends TestCase
         $this->assertArrayNotHasKey('options', $json);
     }
 
+    public function testPushBuilderTargetsSegments(): void
+    {
+        [$client, $transport] = $this->make(new ApiResponse(200, '{"sent":5,"failed":0,"recipients":5}'));
+
+        $result = $client->push()->notification()
+            ->title('Flash sale')
+            ->body('50% off today')
+            ->data(['screen' => '/sale'])
+            ->button('shop', 'Shop now', ['url' => 'https://x/sale'])
+            ->iosBadge(1)
+            ->androidVisibility('public')
+            ->setSegments(['vip', 'active_7d'])
+            ->toUsers(['u_9'])
+            ->send();
+
+        $this->assertSame(5, $result['recipients']);
+        $json = $transport->lastRequest()['json'];
+        $this->assertSame('https://api.example.test/partner/push/send', $transport->lastRequest()['url']);
+        $this->assertSame('Flash sale', $json['title']);
+        $this->assertSame(['vip', 'active_7d'], $json['segmentIds']);
+        $this->assertSame(['u_9'], $json['distinctIds']);
+        $this->assertSame('shop', $json['options']['buttons'][0]['id']);
+        $this->assertSame('public', $json['options']['androidVisibility']);
+        $this->assertSame(1, $json['options']['iosBadge']);
+    }
+
+    public function testPushBuilderToAllAndWhereFilter(): void
+    {
+        [$client, $transport] = $this->make();
+        $client->push()->notification()->title('Hi')->where(['platform' => 'ios'])->send();
+        $this->assertSame(['platform' => 'ios'], $transport->lastRequest()['json']['filter']);
+
+        [$client2, $transport2] = $this->make();
+        $client2->push()->notification()->title('Everyone')->toAll()->send();
+        $this->assertTrue($transport2->lastRequest()['json']['all']);
+    }
+
+    public function testPushBuilderRequiresTitleAndTarget(): void
+    {
+        [$client] = $this->make();
+
+        $this->expectException(\InvalidArgumentException::class);
+        $client->push()->notification()->toUsers(['u_1'])->send(); // no title
+    }
+
+    public function testPushBuilderRequiresTarget(): void
+    {
+        [$client] = $this->make();
+
+        $this->expectException(\InvalidArgumentException::class);
+        $client->push()->notification()->title('Hi')->send(); // no target
+    }
+
     public function testInAppActiveReturnsMessages(): void
     {
         [$client, $transport] = $this->make(new ApiResponse(200, '{"messages":[{"id":"m1"}]}'));

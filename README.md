@@ -370,29 +370,45 @@ $nexus->surveys()->dismiss('survey_1', ['distinctId' => 'user_1']);
 
 ## 15. Push notifications
 
-Send transactional push to users (by `distinctId`) across their registered
-devices. Campaigns, provider credentials, segments and templates live in the
-console; the server SDK is for one‑off, event‑driven sends.
+Send transactional push to **users or segments** across their registered devices.
+Campaigns, provider credentials, segments and templates live in the console; the
+server SDK is for one‑off, event‑driven sends.
+
+**Fluent builder** (recommended):
 
 ```php
-$nexus->push()->send(['user_1', 'user_2'], [
-    'title'    => 'Your order shipped',
-    'body'     => 'Track it in the app',
-    'imageUrl' => 'https://cdn.example.com/box.png',
-    'data'     => ['screen' => '/orders/42'],
-    'options'  => [
-        'buttons'  => [['id' => 'track', 'text' => 'Track', 'action' => 'url', 'url' => 'https://x/track']],
-        'iosBadge' => 1,
-        'androidVisibility' => 'public',
-    ],
-]); // → ['sent' => 2, 'failed' => 0]
-
-$nexus->push()->sendToUser('user_1', ['title' => 'Welcome 👋']);
+$nexus->push()->notification()
+    ->title('Your order shipped')
+    ->body('Track it in the app')
+    ->image('https://cdn.example.com/box.png')
+    ->data(['screen' => '/orders/42'])
+    ->button('track', 'Track', ['url' => 'https://x/track'])
+    ->iosBadge(1)
+    ->androidVisibility('public')
+    ->setSegments(['vip', 'active_7d'])   // union of saved segments
+    ->send();                             // → ['sent' => .., 'failed' => .., 'recipients' => ..]
 ```
 
-`options` accepts the same rich fields as the console composer (action buttons,
-Android large/big/small icon + lockscreen visibility, iOS badge/relevance/
-interruption level, web icon/image/badge).
+Targeting (combine freely; union):
+
+```php
+->toUsers(['user_1', 'user_2'])          // or ->toUser('user_1')
+->setSegments(['vip'])                    // aliases: ->toSegments([...]) / ->toSegment('vip')
+->where(['platform' => 'ios', 'lang' => 'en'])   // ad-hoc device filter (incl. tags)
+->toAll()                                 // everyone (overrides other targets)
+```
+
+Options — action buttons plus per-platform extras: `iosBadge`,
+`iosRelevanceScore`, `iosInterruptionLevel`, `iosSubtitle`, `androidVisibility`,
+`androidLargeIcon`, `androidBigPicture`, `androidAccentColor`, and `option()` /
+`options()` for anything else (web icon/image/badge, small icon, …).
+
+**Quick send** (no builder):
+
+```php
+$nexus->push()->send(['user_1'], ['title' => 'Welcome 👋']);
+$nexus->push()->sendToUser('user_1', ['title' => 'Welcome 👋']);
+```
 
 ---
 
