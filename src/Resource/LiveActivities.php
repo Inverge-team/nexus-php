@@ -4,22 +4,31 @@ declare(strict_types=1);
 
 namespace Inverge\Nexus\Resource;
 
+use Inverge\Nexus\LiveActivity\LiveActivityBuilder;
+
 /**
  * Live Activities — a live, updating view of an in-progress event on the iOS
  * Lock Screen / Dynamic Island and as an Android live notification. This is the
  * classic server-side use case: your backend starts an activity when an order /
  * ride / match begins, updates it as the status changes, and ends it when done.
  *
- * ```php
- * $nexus->liveActivities()->start('DeliveryAttributes', 'order_42',
- *     ['title' => 'Order #42', 'status' => 'Preparing', 'progress' => 20],
- *     ['distinctIds' => ['u_1']]);
- * $nexus->liveActivities()->update('order_42', ['status' => 'On the way', 'progress' => 70]);
- * $nexus->liveActivities()->end('order_42');
- * ```
+ * Prefer the fluent builder:
+ * `$nexus->liveActivities()->activity('DeliveryAttributes', 'order_42')->status('Preparing')->progress(20)->toUser('u_1')->start();`
  */
 final class LiveActivities extends AbstractResource
 {
+    /**
+     * Start a fluent Live Activity. Pass `$activityType` to `start()`; for
+     * `update()` / `end()` it may be omitted.
+     */
+    public function activity(string $activityTypeOrId, ?string $activityId = null): LiveActivityBuilder
+    {
+        // activity($type, $id) for start; activity($id) for update/end.
+        return $activityId === null
+            ? new LiveActivityBuilder($this->client, $activityTypeOrId)
+            : new LiveActivityBuilder($this->client, $activityId, $activityTypeOrId);
+    }
+
     /**
      * Start a live activity. Omit `distinctIds` for a shared activity (many users
      * watching the same event); pass them to target specific users/orders.

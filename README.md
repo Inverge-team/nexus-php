@@ -434,18 +434,29 @@ A live, updating view of an in‑progress event on the iOS Lock Screen / Dynamic
 Island and as an Android live notification — driven from your backend. Start when
 the event begins, update as its status changes, end when it's done.
 
+**Fluent builder** (recommended):
+
 ```php
-// Per‑order (target the user); omit distinctIds for a shared activity.
-$nexus->liveActivities()->start('DeliveryAttributes', 'order_42',
-    ['title' => 'Order #42', 'status' => 'Preparing', 'progress' => 20],
-    ['distinctIds' => ['user_1'], 'priority' => 10],
-);
+// Start — pass the activity type + id; ->toUser(..) for per-order, ->shared() for many.
+$nexus->liveActivities()->activity('DeliveryAttributes', 'order_42')
+    ->title('Order #42')->status('Preparing')->progress(20)
+    ->toUser('user_1')->priority(10)
+    ->start();
 
-// priority 5 = routine (unmetered), 10 = immediate (metered).
-$nexus->liveActivities()->update('order_42', ['status' => 'On the way', 'progress' => 70], ['priority' => 5]);
+// Update — activity type not needed; priority 5 = routine (unmetered), 10 = immediate.
+$nexus->liveActivities()->activity('order_42')
+    ->status('On the way')->progress(70)->priority(5)
+    ->update();
 
-$nexus->liveActivities()->end('order_42', ['dismissalDate' => '2026-01-01T12:00:00Z']);
+// End — optional final state + dismissal time.
+$nexus->liveActivities()->activity('order_42')
+    ->status('Delivered')->dismissAt('2026-01-01T12:00:00Z')
+    ->end();
 ```
+
+Content-state helpers: `title/subtitle/body/status/progress`, plus `set($k,$v)` /
+`state([...])` for custom fields. Or call the plain methods
+(`start()/update()/end()`) with arrays if you prefer.
 
 > **iOS** requires the APNs key configured in the console (Live Activities can't
 > go through FCM) and a Widget Extension in your app. **Android** renders a live

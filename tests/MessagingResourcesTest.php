@@ -168,6 +168,50 @@ final class MessagingResourcesTest extends TestCase
         $this->assertSame('2026-09-06T20:00:00Z', $end['json']['dismissalDate']);
     }
 
+    public function testLiveActivityBuilderStart(): void
+    {
+        [$client, $transport] = $this->make(new ApiResponse(200, '{"ios":1,"android":1}'));
+
+        $result = $client->liveActivities()->activity('DeliveryAttributes', 'order_42')
+            ->title('Order #42')->status('Preparing')->progress(20)->set('eta', 15)
+            ->toUser('u_1')->priority(10)
+            ->start();
+
+        $this->assertSame(1, $result['ios']);
+        $req = $transport->lastRequest();
+        $this->assertSame('https://api.example.test/partner/live-activities/start', $req['url']);
+        $this->assertSame('DeliveryAttributes', $req['json']['activityType']);
+        $this->assertSame('order_42', $req['json']['activityId']);
+        $this->assertSame('Preparing', $req['json']['contentState']['status']);
+        $this->assertSame(15, $req['json']['contentState']['eta']);
+        $this->assertSame(['u_1'], $req['json']['distinctIds']);
+        $this->assertSame(10, $req['json']['priority']);
+    }
+
+    public function testLiveActivityBuilderUpdateAndEnd(): void
+    {
+        [$client, $transport] = $this->make();
+
+        $client->liveActivities()->activity('order_42')->status('On the way')->progress(70)->priority(5)->update();
+        $u = $transport->lastRequest();
+        $this->assertSame('https://api.example.test/partner/live-activities/order_42/update', $u['url']);
+        $this->assertSame('On the way', $u['json']['contentState']['status']);
+        $this->assertSame(5, $u['json']['priority']);
+
+        $client->liveActivities()->activity('order_42')->status('Delivered')->dismissAt('2026-01-01T12:00:00Z')->end();
+        $e = $transport->lastRequest();
+        $this->assertSame('https://api.example.test/partner/live-activities/order_42/end', $e['url']);
+        $this->assertSame('Delivered', $e['json']['contentState']['status']);
+        $this->assertSame('2026-01-01T12:00:00Z', $e['json']['dismissalDate']);
+    }
+
+    public function testLiveActivityBuilderStartRequiresType(): void
+    {
+        [$client] = $this->make();
+        $this->expectException(\InvalidArgumentException::class);
+        $client->liveActivities()->activity('order_42')->status('Preparing')->start(); // no type
+    }
+
     public function testLiveActivityEmptyContentStateSerialisesAsObject(): void
     {
         [$client, $transport] = $this->make();
