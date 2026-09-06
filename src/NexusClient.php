@@ -17,6 +17,9 @@ use Inverge\Nexus\Resource\Logs;
 use Inverge\Nexus\Resource\RemoteConfig;
 use Inverge\Nexus\Resource\Realtime;
 use Inverge\Nexus\Resource\Sessions;
+use Inverge\Nexus\Resource\InApp;
+use Inverge\Nexus\Resource\LiveActivities;
+use Inverge\Nexus\Resource\Push;
 use Inverge\Nexus\Resource\Surveys;
 
 /**
@@ -43,6 +46,9 @@ final class NexusClient
     private Links $links;
     private Surveys $surveys;
     private RemoteConfig $remoteConfig;
+    private Push $push;
+    private InApp $inApp;
+    private LiveActivities $liveActivities;
 
     /**
      * @param Transport|null  $transport   transport for the default sync dispatcher (ignored if $dispatcher is given)
@@ -64,6 +70,9 @@ final class NexusClient
         $this->links = new Links($this);
         $this->surveys = new Surveys($this);
         $this->remoteConfig = new RemoteConfig($this);
+        $this->push = new Push($this);
+        $this->inApp = new InApp($this);
+        $this->liveActivities = new LiveActivities($this);
     }
 
     /**
@@ -129,6 +138,21 @@ final class NexusClient
     public function remoteConfig(): RemoteConfig
     {
         return $this->remoteConfig;
+    }
+
+    public function push(): Push
+    {
+        return $this->push;
+    }
+
+    public function inApp(): InApp
+    {
+        return $this->inApp;
+    }
+
+    public function liveActivities(): LiveActivities
+    {
+        return $this->liveActivities;
     }
 
     public function config(): Config

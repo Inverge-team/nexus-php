@@ -26,8 +26,11 @@ from plain PHP, Laravel, or Symfony.
 12. [Deep links & attribution](#12-deep-links--attribution)
 13. [Realtime](#13-realtime)
 14. [Surveys](#14-surveys)
-15. [Monolog handler](#15-monolog-handler)
-16. [Low‑level request](#16-low-level-request)
+15. [Push notifications](#15-push-notifications)
+16. [In‑app messages](#16-in-app-messages)
+17. [Live Activities](#17-live-activities)
+18. [Monolog handler](#18-monolog-handler)
+19. [Low‑level request](#19-low-level-request)
 
 ---
 
@@ -59,8 +62,8 @@ $nexus->events()->capture('order_placed', ['total' => 42.0], ['distinctId' => 'u
 `Config::fromArray('nxs_…', [...])` is also available.
 
 Resources: `realtime()`, `events()`, `errors()`, `logs()`, `sessions()`,
-`flags()`, `links()`, `surveys()`, `remoteConfig()`. Plus `config()` and
-`request()`.
+`flags()`, `links()`, `surveys()`, `remoteConfig()`, `push()`, `inApp()`,
+`liveActivities()`. Plus `config()` and `request()`.
 
 ---
 
@@ -365,7 +368,76 @@ $nexus->surveys()->dismiss('survey_1', ['distinctId' => 'user_1']);
 
 ---
 
-## 15. Monolog handler
+## 15. Push notifications
+
+Send transactional push to users (by `distinctId`) across their registered
+devices. Campaigns, provider credentials, segments and templates live in the
+console; the server SDK is for one‑off, event‑driven sends.
+
+```php
+$nexus->push()->send(['user_1', 'user_2'], [
+    'title'    => 'Your order shipped',
+    'body'     => 'Track it in the app',
+    'imageUrl' => 'https://cdn.example.com/box.png',
+    'data'     => ['screen' => '/orders/42'],
+    'options'  => [
+        'buttons'  => [['id' => 'track', 'text' => 'Track', 'action' => 'url', 'url' => 'https://x/track']],
+        'iosBadge' => 1,
+        'androidVisibility' => 'public',
+    ],
+]); // → ['sent' => 2, 'failed' => 0]
+
+$nexus->push()->sendToUser('user_1', ['title' => 'Welcome 👋']);
+```
+
+`options` accepts the same rich fields as the console composer (action buttons,
+Android large/big/small icon + lockscreen visibility, iOS badge/relevance/
+interruption level, web icon/image/badge).
+
+---
+
+## 16. In‑app messages
+
+In‑app messages are composed in the console and shown by the client SDK. Server‑
+side you can fetch the ones a user is eligible for (headless / server‑driven UIs)
+and record impressions / clicks.
+
+```php
+$messages = $nexus->inApp()->active(['distinctId' => 'user_1']);
+
+$nexus->inApp()->impression('msg_1', ['distinctId' => 'user_1']);
+$nexus->inApp()->click('msg_1', 'cta', ['distinctId' => 'user_1']);
+$nexus->inApp()->dismiss('msg_1', ['distinctId' => 'user_1']);
+```
+
+---
+
+## 17. Live Activities
+
+A live, updating view of an in‑progress event on the iOS Lock Screen / Dynamic
+Island and as an Android live notification — driven from your backend. Start when
+the event begins, update as its status changes, end when it's done.
+
+```php
+// Per‑order (target the user); omit distinctIds for a shared activity.
+$nexus->liveActivities()->start('DeliveryAttributes', 'order_42',
+    ['title' => 'Order #42', 'status' => 'Preparing', 'progress' => 20],
+    ['distinctIds' => ['user_1'], 'priority' => 10],
+);
+
+// priority 5 = routine (unmetered), 10 = immediate (metered).
+$nexus->liveActivities()->update('order_42', ['status' => 'On the way', 'progress' => 70], ['priority' => 5]);
+
+$nexus->liveActivities()->end('order_42', ['dismissalDate' => '2026-01-01T12:00:00Z']);
+```
+
+> **iOS** requires the APNs key configured in the console (Live Activities can't
+> go through FCM) and a Widget Extension in your app. **Android** renders a live
+> ongoing notification with no extra setup.
+
+---
+
+## 18. Monolog handler
 
 Forward your app's Monolog records to Nexus logs:
 
@@ -380,7 +452,7 @@ automatically.
 
 ---
 
-## 16. Low‑level request
+## 19. Low‑level request
 
 For endpoints without a dedicated resource method:
 

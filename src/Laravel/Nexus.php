@@ -23,6 +23,9 @@ use Illuminate\Support\Facades\Facade;
  * @method static \Inverge\Nexus\Resource\Links     links()
  * @method static \Inverge\Nexus\Resource\Surveys   surveys()
  * @method static \Inverge\Nexus\Resource\RemoteConfig remoteConfig()
+ * @method static \Inverge\Nexus\Resource\Push       push()
+ * @method static \Inverge\Nexus\Resource\InApp      inApp()
+ * @method static \Inverge\Nexus\Resource\LiveActivities liveActivities()
  *
  * @see \Inverge\Nexus\NexusClient
  */
