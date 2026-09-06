@@ -26,8 +26,11 @@ from plain PHP, Laravel, or Symfony.
 12. [Deep links & attribution](#12-deep-links--attribution)
 13. [Realtime](#13-realtime)
 14. [Surveys](#14-surveys)
-15. [Monolog handler](#15-monolog-handler)
-16. [Low‑level request](#16-low-level-request)
+15. [Push notifications](#15-push-notifications)
+16. [In‑app messages](#16-in-app-messages)
+17. [Live Activities](#17-live-activities)
+18. [Monolog handler](#18-monolog-handler)
+19. [Low‑level request](#19-low-level-request)
 
 ---
 
@@ -59,8 +62,8 @@ $nexus->events()->capture('order_placed', ['total' => 42.0], ['distinctId' => 'u
 `Config::fromArray('nxs_…', [...])` is also available.
 
 Resources: `realtime()`, `events()`, `errors()`, `logs()`, `sessions()`,
-`flags()`, `links()`, `surveys()`, `remoteConfig()`. Plus `config()` and
-`request()`.
+`flags()`, `links()`, `surveys()`, `remoteConfig()`, `push()`, `inApp()`,
+`liveActivities()`. Plus `config()` and `request()`.
 
 ---
 
@@ -365,7 +368,103 @@ $nexus->surveys()->dismiss('survey_1', ['distinctId' => 'user_1']);
 
 ---
 
-## 15. Monolog handler
+## 15. Push notifications
+
+Send transactional push to **users or segments** across their registered devices.
+Campaigns, provider credentials, segments and templates live in the console; the
+server SDK is for one‑off, event‑driven sends.
+
+**Fluent builder** (recommended):
+
+```php
+$nexus->push()->notification()
+    ->title('Your order shipped')
+    ->body('Track it in the app')
+    ->image('https://cdn.example.com/box.png')
+    ->data(['screen' => '/orders/42'])
+    ->button('track', 'Track', ['url' => 'https://x/track'])
+    ->iosBadge(1)
+    ->androidVisibility('public')
+    ->setSegments(['vip', 'active_7d'])   // union of saved segments
+    ->send();                             // → ['sent' => .., 'failed' => .., 'recipients' => ..]
+```
+
+Targeting (combine freely; union):
+
+```php
+->toUsers(['user_1', 'user_2'])          // or ->toUser('user_1')
+->setSegments(['vip'])                    // aliases: ->toSegments([...]) / ->toSegment('vip')
+->where(['platform' => 'ios', 'lang' => 'en'])   // ad-hoc device filter (incl. tags)
+->toAll()                                 // everyone (overrides other targets)
+```
+
+Options — action buttons plus per-platform extras: `iosBadge`,
+`iosRelevanceScore`, `iosInterruptionLevel`, `iosSubtitle`, `androidVisibility`,
+`androidLargeIcon`, `androidBigPicture`, `androidAccentColor`, and `option()` /
+`options()` for anything else (web icon/image/badge, small icon, …).
+
+**Quick send** (no builder):
+
+```php
+$nexus->push()->send(['user_1'], ['title' => 'Welcome 👋']);
+$nexus->push()->sendToUser('user_1', ['title' => 'Welcome 👋']);
+```
+
+---
+
+## 16. In‑app messages
+
+In‑app messages are composed in the console and shown by the client SDK. Server‑
+side you can fetch the ones a user is eligible for (headless / server‑driven UIs)
+and record impressions / clicks.
+
+```php
+$messages = $nexus->inApp()->active(['distinctId' => 'user_1']);
+
+$nexus->inApp()->impression('msg_1', ['distinctId' => 'user_1']);
+$nexus->inApp()->click('msg_1', 'cta', ['distinctId' => 'user_1']);
+$nexus->inApp()->dismiss('msg_1', ['distinctId' => 'user_1']);
+```
+
+---
+
+## 17. Live Activities
+
+A live, updating view of an in‑progress event on the iOS Lock Screen / Dynamic
+Island and as an Android live notification — driven from your backend. Start when
+the event begins, update as its status changes, end when it's done.
+
+**Fluent builder** (recommended):
+
+```php
+// Start — pass the activity type + id; ->toUser(..) for per-order, ->shared() for many.
+$nexus->liveActivities()->activity('DeliveryAttributes', 'order_42')
+    ->title('Order #42')->status('Preparing')->progress(20)
+    ->toUser('user_1')->priority(10)
+    ->start();
+
+// Update — activity type not needed; priority 5 = routine (unmetered), 10 = immediate.
+$nexus->liveActivities()->activity('order_42')
+    ->status('On the way')->progress(70)->priority(5)
+    ->update();
+
+// End — optional final state + dismissal time.
+$nexus->liveActivities()->activity('order_42')
+    ->status('Delivered')->dismissAt('2026-01-01T12:00:00Z')
+    ->end();
+```
+
+Content-state helpers: `title/subtitle/body/status/progress`, plus `set($k,$v)` /
+`state([...])` for custom fields. Or call the plain methods
+(`start()/update()/end()`) with arrays if you prefer.
+
+> **iOS** requires the APNs key configured in the console (Live Activities can't
+> go through FCM) and a Widget Extension in your app. **Android** renders a live
+> ongoing notification with no extra setup.
+
+---
+
+## 18. Monolog handler
 
 Forward your app's Monolog records to Nexus logs:
 
@@ -380,7 +479,7 @@ automatically.
 
 ---
 
-## 16. Low‑level request
+## 19. Low‑level request
 
 For endpoints without a dedicated resource method:
 
