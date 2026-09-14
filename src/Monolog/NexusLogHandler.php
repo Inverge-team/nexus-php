@@ -33,6 +33,13 @@ final class NexusLogHandler extends AbstractProcessingHandler
         bool $bubble = true,
     ) {
         parent::__construct($level, $bubble);
+
+        // Laravel does not reliably call Monolog close() per request, so flush
+        // any remaining buffered lines at shutdown — otherwise lines under
+        // flushAt would be lost. flush() is idempotent (clears the buffer).
+        register_shutdown_function(function (): void {
+            $this->flush();
+        });
     }
 
     protected function write(LogRecord $record): void

@@ -30,8 +30,21 @@ return [
     |--------------------------------------------------------------------------
     | Log forwarding
     |--------------------------------------------------------------------------
-    | Attach a Monolog handler to the default log channel that ships your logs
-    | to Nexus Logs (batched). Uses the queue above when it is enabled.
+    | Two ways to ship your logs to Nexus Logs (both batch + use the queue above
+    | when enabled):
+    |
+    | 1) A dedicated `nexus` LOG CHANNEL (recommended). It is auto-registered, so
+    |    you can send logs to Nexus INSTEAD of the file with no other setup:
+    |
+    |        LOG_CHANNEL=nexus            # nothing goes to laravel.log
+    |
+    |    …or keep the file too by stacking (config/logging.php):
+    |
+    |        'stack' => ['driver' => 'stack', 'channels' => ['single', 'nexus']],
+    |
+    | 2) `logging.enabled` below — piggybacks a handler on your DEFAULT channel
+    |    (logs go to BOTH the file and Nexus). Leave it off if you use the
+    |    channel above, or you'll double-send.
     */
     'logging' => [
         'enabled' => env('NEXUS_LOGGING', false),
