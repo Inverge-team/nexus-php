@@ -99,7 +99,13 @@ final class NexusServiceProvider extends ServiceProvider
                 return;
             }
 
-            $log->extend('nexus', function (Application $app, array $config): Logger {
+            // NOTE: Laravel rebinds a custom log-driver closure's scope to the
+            // LogManager (`$callback->bindTo($this, $this)`), so `self::` inside
+            // it would resolve to LogManager — NOT this provider. Do NOT call
+            // self::level() here; pass a pre-bound resolver captured by use().
+            $toLevel = fn (string $name): Level => self::level($name);
+
+            $log->extend('nexus', function (Application $app, array $config) use ($toLevel): Logger {
                 /** @var array<string, mixed> $nexusCfg */
                 $nexusCfg = $app['config']['nexus'] ?? [];
 
@@ -110,7 +116,7 @@ final class NexusServiceProvider extends ServiceProvider
                     nexus: $client,
                     captureExceptions: (bool) ($config['capture_errors'] ?? ($nexusCfg['capture_errors'] ?? true)),
                     flushAt: (int) ($config['flush_at'] ?? ($nexusCfg['logging']['flush_at'] ?? 50)),
-                    level: self::level((string) ($config['level'] ?? 'debug')),
+                    level: $toLevel((string) ($config['level'] ?? 'debug')),
                 );
 
                 return new Logger('nexus', [$handler]);
@@ -144,6 +150,15 @@ final class NexusServiceProvider extends ServiceProvider
             return;
         }
 
+        // If the app already routes to Nexus via the `nexus` LOG CHANNEL (as its
+        // default, or the default 'stack' includes it), don't ALSO piggyback a
+        // handler on the default channel — that would double-send every line.
+        $default = (string) ($this->app['config']['logging.default'] ?? '');
+        $stack = (array) ($this->app['config']["logging.channels.$default.channels"] ?? []);
+        if ($default === 'nexus' || \in_array('nexus', $stack, true)) {
+            return;
+        }
+
         try {
             $useQueue = (bool) ($config['queue']['enabled'] ?? false);
             $client = $useQueue ? $this->app->make('nexus.queue') : $this->app->make(NexusClient::class);
@@ -155,7 +170,9 @@ final class NexusServiceProvider extends ServiceProvider
                 level: self::level((string) ($config['logging']['level'] ?? 'debug')),
             );
 
-            $logger = $this->app['log']->channel()->getLogger();
+            // Resolve the DEFAULT channel explicitly (never 'nexus' — guarded
+            // above) so we don't recursively trigger our own channel driver.
+            $logger = $this->app['log']->channel($default !== '' ? $default : null)->getLogger();
             if ($logger instanceof Logger) {
                 $logger->pushHandler($handler);
             }
