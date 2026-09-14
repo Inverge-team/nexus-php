@@ -51,6 +51,17 @@ final class NexusServiceProvider extends ServiceProvider
                 $queue['queue'] ?? null,
             ));
         });
+
+        // Pre-register a `nexus` log channel so `LOG_CHANNEL=nexus` (or adding
+        // 'nexus' to a stack) works with ZERO edits to config/logging.php. The
+        // user can still override this block in their own logging config.
+        $channels = (array) ($this->app['config']['logging.channels'] ?? []);
+        if (!isset($channels['nexus'])) {
+            $this->app['config']->set('logging.channels.nexus', [
+                'driver' => 'nexus',
+                'level' => env('NEXUS_LOG_LEVEL', env('LOG_LEVEL', 'debug')),
+            ]);
+        }
     }
 
     public function boot(): void
@@ -64,7 +75,49 @@ final class NexusServiceProvider extends ServiceProvider
         }
 
         $this->registerNotificationChannel();
+        $this->registerLogChannel();
         $this->attachLogHandler();
+    }
+
+    /**
+     * Register the `nexus` log-channel driver. With it a user can send logs to
+     * Nexus INSTEAD of the local log file — set `LOG_CHANNEL=nexus` (nothing
+     * hits laravel.log), or keep the file and add both to a stack:
+     *
+     *   'channels' => [
+     *       'stack' => ['driver' => 'stack', 'channels' => ['single', 'nexus']],
+     *       'nexus' => ['driver' => 'nexus', 'level' => 'debug'],  // optional; auto-registered
+     *   ]
+     *
+     * Per-channel config keys: `level`, `flush_at`, `capture_errors`, `queue`.
+     */
+    private function registerLogChannel(): void
+    {
+        try {
+            $log = $this->app->make('log');
+            if (!method_exists($log, 'extend')) {
+                return;
+            }
+
+            $log->extend('nexus', function (Application $app, array $config): Logger {
+                /** @var array<string, mixed> $nexusCfg */
+                $nexusCfg = $app['config']['nexus'] ?? [];
+
+                $useQueue = (bool) ($config['queue'] ?? ($nexusCfg['queue']['enabled'] ?? false));
+                $client = $useQueue ? $app->make('nexus.queue') : $app->make(NexusClient::class);
+
+                $handler = new NexusLogHandler(
+                    nexus: $client,
+                    captureExceptions: (bool) ($config['capture_errors'] ?? ($nexusCfg['capture_errors'] ?? true)),
+                    flushAt: (int) ($config['flush_at'] ?? ($nexusCfg['logging']['flush_at'] ?? 50)),
+                    level: self::level((string) ($config['level'] ?? 'debug')),
+                );
+
+                return new Logger('nexus', [$handler]);
+            });
+        } catch (\Throwable) {
+            // best-effort — never break app boot over logging wiring
+        }
     }
 
     /**
