@@ -71,4 +71,77 @@ final class RemoteConfig extends AbstractResource
 
         return \array_key_exists($key, $params) ? ($params[$key]['value'] ?? $default) : $default;
     }
+
+    // ── Write ────────────────────────────────────────────────────────────────
+    // These edit the DRAFT template; changes go LIVE only after publish().
+    // Scoped to this API key's environment. Requires a key with write access.
+
+    /**
+     * Create or update a parameter in the draft template.
+     *
+     * @param 'STRING'|'NUMBER'|'BOOLEAN'|'JSON' $valueType
+     * @param array<string, mixed>|null          $conditionalValues conditionName => value
+     *
+     * @return array<string, mixed> the stored parameter
+     */
+    public function setParameter(
+        string $key,
+        string $valueType,
+        mixed $defaultValue = null,
+        ?array $conditionalValues = null,
+        ?string $description = null,
+    ): array {
+        return $this->client->request('PUT', '/partner/remote-config/parameters', $this->compact([
+            'key' => $key,
+            'valueType' => $valueType,
+            'defaultValue' => $defaultValue,
+            'conditionalValues' => $conditionalValues ?: null,
+            'description' => $description,
+        ])) ?? [];
+    }
+
+    /** Remove a parameter from the draft template. */
+    public function deleteParameter(string $key): void
+    {
+        $this->client->request('DELETE', '/partner/remote-config/parameters/' . rawurlencode($key));
+    }
+
+    /**
+     * Publish the current draft — makes all pending parameter changes live for
+     * every fetch() from now on.
+     *
+     * @return array{versionNumber:int,etag:string,createdAt:string}
+     */
+    public function publish(?string $description = null): array
+    {
+        return $this->client->request('POST', '/partner/remote-config/publish', $this->compact([
+            'description' => $description,
+        ])) ?? [];
+    }
+
+    /**
+     * Convenience: set one parameter and publish it in a single call. The value
+     * type is inferred from $value unless given explicitly.
+     *
+     * @param 'STRING'|'NUMBER'|'BOOLEAN'|'JSON'|null $valueType
+     *
+     * @return array{versionNumber:int,etag:string,createdAt:string} the new version
+     */
+    public function set(string $key, mixed $value, ?string $valueType = null, ?string $description = null): array
+    {
+        $this->setParameter($key, $valueType ?? self::inferType($value), $value, null, $description);
+
+        return $this->publish($description);
+    }
+
+    /** @return 'STRING'|'NUMBER'|'BOOLEAN'|'JSON' */
+    private static function inferType(mixed $value): string
+    {
+        return match (true) {
+            \is_bool($value) => 'BOOLEAN',
+            \is_int($value), \is_float($value) => 'NUMBER',
+            \is_array($value) => 'JSON',
+            default => 'STRING',
+        };
+    }
 }
