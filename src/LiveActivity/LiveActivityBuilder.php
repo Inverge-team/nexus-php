@@ -7,8 +7,24 @@ namespace Inverge\Nexus\LiveActivity;
 use Inverge\Nexus\NexusClient;
 
 /**
- * Fluent builder for a Live Activity. Compose the content-state and targeting,
- * then `start()`, `update()`, or `end()`.
+ * Fluent builder for a Live Activity. Compose the data / content-state and
+ * targeting, then `start()`, `update()`, or `end()`.
+ *
+ * Templated (recommended) — template-only setters (`step`, `etaAt`, `value`,
+ * `canceled`, …) send `data`, merged server-side on update:
+ *
+ * ```php
+ * $nexus->liveActivities()->template('order_tracking', 'order_42')
+ *     ->step('pending')->etaAt(new DateTimeImmutable('+25 minutes'))
+ *     ->values(['driver' => 'Ahmed'])->toUser('user_1')
+ *     ->start();
+ *
+ * $nexus->liveActivities()->activity('order_42')->step('arrived')->update();
+ * $nexus->liveActivities()->activity('order_42')->step('completed')->end();
+ * ```
+ *
+ * Plain (your own iOS widget) — `progress()` and the texts on their own keep
+ * sending a `contentState`:
  *
  * ```php
  * $nexus->liveActivities()->activity('DeliveryAttributes', 'order_42')
@@ -26,6 +42,11 @@ final class LiveActivityBuilder
 {
     /** @var array<string, mixed> */
     private array $state = [];
+    /** @var array<string, mixed> */
+    private array $data = [];
+    private ?string $lang = null;
+    /** @var array{title:string,body?:string}|null */
+    private ?array $alert = null;
     /** @var list<string> */
     private array $distinctIds = [];
     /** @var array<string, mixed> */
@@ -38,24 +59,140 @@ final class LiveActivityBuilder
         private readonly NexusClient $client,
         private readonly string $activityId,
         private readonly ?string $activityType = null,
+        /** @var string|array<string, mixed>|null */
+        private readonly string|array|null $template = null,
     ) {
     }
 
-    // ---- content-state ----
+    /** Template mode = a template, or a template-only field (step / state / etaAt / values). */
+    private function templated(): bool
+    {
+        if ($this->template !== null) {
+            return true;
+        }
+        foreach (['step', 'state', 'etaAt', 'values'] as $k) {
+            if (\array_key_exists($k, $this->data)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // ---- template data ----
+
+    /** The current step (a step id or label of the template). */
+    public function step(string $step): self
+    {
+        $this->data['step'] = $step;
+
+        return $this;
+    }
+
+    /** Arrival time → a live countdown on the device (DateTime, unix seconds or ms). */
+    public function etaAt(\DateTimeInterface|int|float $at): self
+    {
+        $this->data['etaAt'] = $at instanceof \DateTimeInterface
+            ? $at->getTimestamp()
+            : (int) round($at > 1e11 ? $at / 1000 : $at);
+
+        return $this;
+    }
+
+    /** A fixed ETA text instead of a countdown, e.g. '8 min'. */
+    public function eta(string $text): self
+    {
+        return $this->value('eta', $text);
+    }
+
+    /** One {{placeholder}} value. */
+    public function value(string $key, string|int|float|bool $value): self
+    {
+        $this->data['values'][$key] = $value;
+
+        return $this;
+    }
+
+    /** @param array<string, string|int|float|bool> $values */
+    public function values(array $values): self
+    {
+        // Later values win; insertion order is kept (and keys never renumbered).
+        $this->data['values'] = array_replace($this->data['values'] ?? [], $values);
+
+        return $this;
+    }
+
+    /** Show the canceled state. */
+    public function canceled(): self
+    {
+        $this->data['state'] = 'canceled';
+
+        return $this;
+    }
+
+    /** Show the finished state. */
+    public function done(): self
+    {
+        $this->data['state'] = 'done';
+
+        return $this;
+    }
+
+    /**
+     * Merge raw template data (step, state, progress, etaAt, values).
+     *
+     * @param array<string, mixed> $data
+     */
+    public function data(array $data): self
+    {
+        $values = $data['values'] ?? null;
+        unset($data['values']);
+        $this->data = $data + $this->data;
+        if (\is_array($values) && $values !== []) {
+            $this->values($values);
+        }
+
+        return $this;
+    }
+
+    /** Start only: force one language for every recipient (default: each device's own). */
+    public function lang(string $lang): self
+    {
+        $this->lang = $lang;
+
+        return $this;
+    }
+
+    /** Start only: the iOS alert shown with the start. */
+    public function alert(string $title, ?string $body = null): self
+    {
+        $this->alert = $body === null ? ['title' => $title] : ['title' => $title, 'body' => $body];
+
+        return $this;
+    }
+
+    // ---- content-state (templated: these override the template's texts) ----
 
     public function title(string $v): self
     {
-        return $this->set('title', $v);
+        return $this->text('title', $v);
     }
 
     public function subtitle(string $v): self
     {
-        return $this->set('subtitle', $v);
+        return $this->text('subtitle', $v);
     }
 
     public function body(string $v): self
     {
-        return $this->set('body', $v);
+        return $this->text('body', $v);
+    }
+
+    private function text(string $key, string $v): self
+    {
+        $this->data[$key] = $v;
+
+        return $this->set($key, $v);
     }
 
     public function status(string $v): self
@@ -63,9 +200,11 @@ final class LiveActivityBuilder
         return $this->set('status', $v);
     }
 
-    /** Progress, 0–100 (or 0.0–1.0 — both are accepted by the renderers). */
+    /** Progress, 0.0–1.0 (or 0–100). Templated: toward the next step / along the bar. */
     public function progress(int|float $v): self
     {
+        $this->data['progress'] = $v;
+
         return $this->set('progress', $v);
     }
 
@@ -163,8 +302,18 @@ final class LiveActivityBuilder
      */
     public function start(): array
     {
+        if ($this->template !== null) {
+            return $this->client->liveActivities()->startTemplate($this->template, $this->activityId, $this->data, array_filter([
+                'distinctIds' => $this->distinctIds ?: null,
+                'lang' => $this->lang,
+                'alert' => $this->alert,
+                'attributes' => $this->attributes ?: null,
+                'staleDate' => $this->staleDate,
+                'priority' => $this->priority,
+            ], static fn ($v) => $v !== null));
+        }
         if ($this->activityType === null || $this->activityType === '') {
-            throw new \InvalidArgumentException('start() requires an activity type: ->activity($type, $id).');
+            throw new \InvalidArgumentException('start() requires a template — ->template($key, $id) — or an activity type — ->activity($type, $id).');
         }
 
         return $this->client->liveActivities()->start($this->activityType, $this->activityId, $this->state, array_filter([
@@ -182,6 +331,13 @@ final class LiveActivityBuilder
      */
     public function update(): array
     {
+        if ($this->templated()) {
+            return $this->client->liveActivities()->updateData($this->activityId, $this->data, array_filter([
+                'staleDate' => $this->staleDate,
+                'priority' => $this->priority,
+            ], static fn ($v) => $v !== null));
+        }
+
         return $this->client->liveActivities()->update($this->activityId, $this->state, array_filter([
             'staleDate' => $this->staleDate,
             'priority' => $this->priority,
@@ -195,8 +351,11 @@ final class LiveActivityBuilder
      */
     public function end(): array
     {
+        $templated = $this->templated();
+
         return $this->client->liveActivities()->end($this->activityId, array_filter([
-            'contentState' => $this->state ?: null,
+            'data' => $templated ? ($this->data ?: null) : null,
+            'contentState' => $templated ? null : ($this->state ?: null),
             'dismissalDate' => $this->dismissalDate,
         ], static fn ($v) => $v !== null));
     }

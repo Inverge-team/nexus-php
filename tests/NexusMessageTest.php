@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Inverge\Nexus\Tests;
 
 use Inverge\Nexus\Config;
-use Inverge\Nexus\Laravel\Notifications\NexusMessage;
+use Inverge\Nexus\Laravel\Notifications\NexusRealtimeMessage;
 use Inverge\Nexus\NexusClient;
 use Inverge\Nexus\Tests\Support\FakeTransport;
 use PHPUnit\Framework\TestCase;
@@ -21,7 +21,7 @@ final class NexusMessageTest extends TestCase
     {
         $transport = new FakeTransport();
 
-        NexusMessage::create()
+        NexusRealtimeMessage::create()
             ->to('user_7')
             ->event('order_shipped', ['order' => 42])
             ->emit('orders:42', 'status', ['state' => 'shipped'])
@@ -58,7 +58,7 @@ final class NexusMessageTest extends TestCase
     {
         $transport = new FakeTransport();
 
-        $message = NexusMessage::create()->event('x');
+        $message = NexusRealtimeMessage::create()->event('x');
         $message->applyRoute('user_9'); // e.g. routeNotificationForNexus() => 'user_9'
         $message->send($this->client($transport));
 
@@ -69,7 +69,7 @@ final class NexusMessageTest extends TestCase
     {
         $transport = new FakeTransport();
 
-        $message = NexusMessage::create()->to('explicit')->event('x');
+        $message = NexusRealtimeMessage::create()->to('explicit')->event('x');
         $message->applyRoute('from_route');
         $message->send($this->client($transport));
 

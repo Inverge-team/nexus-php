@@ -107,6 +107,97 @@ app('nexus.queue')->events()->capture('order_placed', ['total' => 42], ['distinc
 
 Unhandled exceptions are reported automatically when `NEXUS_CAPTURE_ERRORS=true`.
 
+### Notification channels
+
+Send Nexus push notifications, Live Activities and realtime messages from
+ordinary Laravel notifications — one method per product, like `toMail()`:
+
+| Method | Returns | Own channel |
+|---|---|---|
+| `toNexusPush($notifiable)` | `NexusPushMessage` — same API as `$nexus->push()->notification()` | `'nexus-push'` |
+| `toNexusLiveActivity($notifiable)` | `NexusLiveActivityMessage` — `start` / `update` / `end` | `'nexus-live-activity'` |
+| `toNexusRealtime($notifiable)` | `NexusRealtimeMessage` — room emits, events, logs, errors | `'nexus-realtime'` |
+
+Put **`NexusChannel::class`** (or `'nexus'`) in `via()` and every method the
+notification has is sent — no need to list each product. Or list the products'
+own channels to choose per notifiable (e.g. only push for users who opted in).
+
+Tell Nexus who the notifiable is (its **distinctId**, the id your apps pass to
+`Nexus.identify`):
+
+```php
+class User extends Authenticatable
+{
+    use Notifiable;
+
+    public function routeNotificationForNexus(): string
+    {
+        return "CLIENTS.{$this->id}";
+    }
+}
+```
+
+Then each order notification maps to one Live Activity step, plus a push:
+
+```php
+use Inverge\Nexus\Laravel\Notifications\NexusChannel;
+use Inverge\Nexus\Laravel\Notifications\NexusLiveActivityMessage;
+use Inverge\Nexus\Laravel\Notifications\NexusPushMessage;
+
+class OrderStatusChanged extends Notification implements ShouldQueue
+{
+    use Queueable;
+
+    public function __construct(public Order $order) {}
+
+    public function via(object $notifiable): array
+    {
+        return [NexusChannel::class]; // push + Live Activity below
+    }
+
+    public function toNexusPush(object $notifiable): NexusPushMessage
+    {
+        return NexusPushMessage::create('Your fuel is on the way', "Driver: {$this->order->driver_name}")
+            ->data(['screen' => "/orders/{$this->order->id}"]);
+    }
+
+    public function toNexusLiveActivity(object $notifiable): NexusLiveActivityMessage
+    {
+        $id = "order_{$this->order->id}";
+
+        return match ($this->order->status) {
+            'Pending' => NexusLiveActivityMessage::create($id)->start('order_tracking')   // a template from the console
+                ->step('pending')->etaAt($this->order->eta)
+                ->values(['driver' => $this->order->driver_name, 'quantity' => "{$this->order->liters} L"]),
+            'Completed' => NexusLiveActivityMessage::create($id)->end()->step('completed'),
+            'Canceled' => NexusLiveActivityMessage::create($id)->end()->canceled(),
+            default => NexusLiveActivityMessage::create($id)->update()->step($this->order->status), // partial, merged
+        };
+    }
+}
+```
+
+- A push or a Live Activity **start** goes to the notifiable's route unless the
+  message targets someone itself (`->toUser()`, `->toSegment()`, `->toAll()` /
+  `->shared()`). Updates and ends address the activity by id, so they need no
+  route. Return `null` from a `to…` method to skip that channel.
+- Per-product routes override the shared one: `routeNotificationForNexusPush()`,
+  `routeNotificationForNexusLiveActivity()`, `routeNotificationForNexusRealtime()`. A route may be a distinctId, a list of
+  them, or `['distinctId' => …]`.
+- On-demand: `Notification::route('nexus', 'CLIENTS.7')->notify(new OrderStatusChanged($order));`
+- `NexusLiveActivityMessage::create($id)->startActivity($type)` starts a plain activity for
+  your own iOS widget instead of a template.
+- **`NexusChannel` is safe to queue.** It sends each product independently (one
+  failing doesn't stop the others), still fails the job so Laravel retries it, and
+  remembers — in your cache, keyed by the notification's id — what already went
+  out, so **a retry re-sends only what failed**, never a second push. A product
+  whose own channel is also in `via()` is left to that channel, so it's never sent
+  twice.
+- Use the products' own channels when you want `via()` to pick per notifiable,
+  or `NotificationSent` / `NotificationFailed` per product.
+- `toNexus()` / `NexusMessage` (the realtime method's and message's former
+  names) still work.
+
 ---
 
 ## 4. Symfony setup
@@ -431,10 +522,40 @@ $nexus->inApp()->dismiss('msg_1', ['distinctId' => 'user_1']);
 ## 17. Live Activities
 
 A live, updating view of an in‑progress event on the iOS Lock Screen / Dynamic
-Island and as an Android live notification — driven from your backend. Start when
+Island and as an Android 16 Live Update — driven from your backend. Start when
 the event begins, update as its status changes, end when it's done.
 
-**Fluent builder** (recommended):
+### Templates (recommended)
+
+Design the activity once in the Nexus console (**Live Activities → Templates**:
+layout, colours, steps, icons, translations). The Nexus mobile SDKs render it on
+iOS and Android, each device in its own language — your server sends only data:
+
+```php
+$nexus->liveActivities()->template('order_tracking', 'order_42')   // template key + your id
+    ->step('pending')                                              // a step id (or label)
+    ->etaAt(new DateTimeImmutable('+25 minutes'))                  // live countdown on the device
+    ->values(['driver' => 'Ahmed', 'quantity' => '500 L · Diesel']) // {{placeholders}}
+    ->toUser('user_1')
+    ->start();
+
+// Updates are partial — only what changed; the server merges it.
+$nexus->liveActivities()->activity('order_42')->step('on_the_way')->progress(0.4)->update();
+$nexus->liveActivities()->activity('order_42')->step('completed')->end();   // final state
+$nexus->liveActivities()->activity('order_42')->canceled()->end();          // or canceled
+```
+
+Data setters: `step`, `progress` (0–1 toward the next step), `etaAt`
+(DateTime / unix s / ms) or `eta('8 min')` for fixed text, `value($k, $v)` /
+`values([...])`, `canceled()`, `done()`, `data([...])`, `title/subtitle/body`
+(override the template's texts). Start-only: `lang('ar')` forces one language for
+everyone (default: each device's app language), `alert($title, $body)`. Plain
+methods: `startTemplate($template, $id, $data, $options)`, `updateData($id, $data)`,
+`end($id, ['data' => [...]])`; a `null` inside `$data` clears a field. `$template`
+may also be an inline design array. The start result includes `iosTargets` and,
+when iOS got nothing, an `iosWarning` saying why.
+
+### Plain (your own iOS widget)
 
 ```php
 // Start — pass the activity type + id; ->toUser(..) for per-order, ->shared() for many.
@@ -459,8 +580,8 @@ Content-state helpers: `title/subtitle/body/status/progress`, plus `set($k,$v)` 
 (`start()/update()/end()`) with arrays if you prefer.
 
 > **iOS** requires the APNs key configured in the console (Live Activities can't
-> go through FCM) and a Widget Extension in your app. **Android** renders a live
-> ongoing notification with no extra setup.
+> go through FCM) and the one-time Widget Extension in your app (see the Flutter
+> SDK README). **Android** needs no extra setup.
 
 ---
 
