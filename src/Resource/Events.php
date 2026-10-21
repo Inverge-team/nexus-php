@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Inverge\Nexus\Resource;
 
+use Inverge\Nexus\Services;
+
 /**
  * Product analytics — capture events, optionally correlated to a person/session.
  */
@@ -37,6 +39,9 @@ final class Events extends AbstractResource
      */
     public function batch(array $events, array $context = []): int
     {
+        if (!$this->client->enabled(Services::EVENTS)) {
+            return 0; // switched off (NEXUS_EVENTS_ENABLED=false): nothing written
+        }
         $body = $this->compact([
             'events' => array_values($events),
             'release' => $context['release'] ?? null,

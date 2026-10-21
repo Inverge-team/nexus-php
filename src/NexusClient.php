@@ -174,6 +174,22 @@ final class NexusClient
      */
     public function request(string $method, string $path, ?array $json = null, array $headers = []): ?array
     {
+        // A switched-off service (NEXUS_<SERVICE>_ENABLED=false) is a no-op:
+        // no network, no queued job, no exception — callers get their neutral value.
+        $service = Services::forPath($path);
+        if ($service !== null && !$this->enabled($service)) {
+            return null;
+        }
+
         return $this->dispatcher->dispatch($method, $path, $json, $headers);
+    }
+
+    /**
+     * Whether a product is switched on (see {@see Services}) — e.g. to skip
+     * building an expensive payload: `if ($nexus->enabled(Services::PUSH)) …`.
+     */
+    public function enabled(string $service): bool
+    {
+        return $this->config->services()->enabled($service);
     }
 }

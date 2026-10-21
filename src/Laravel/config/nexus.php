@@ -14,6 +14,33 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Services on/off
+    |--------------------------------------------------------------------------
+    | Switch a Nexus product off without removing the code that uses it — e.g.
+    | NEXUS_LIVE_ACTIVITIES_ENABLED=false stops Live Activities everywhere
+    | (the Laravel channel, the builders, plain calls). A switched-off service
+    | makes no network call and never throws: writes are skipped, reads return
+    | their defaults. NEXUS_ENABLED=false turns every service off.
+    */
+    'enabled' => env('NEXUS_ENABLED', true),
+
+    'services' => [
+        'realtime' => env('NEXUS_REALTIME_ENABLED', true),
+        'events' => env('NEXUS_EVENTS_ENABLED', true),
+        'errors' => env('NEXUS_ERRORS_ENABLED', true),
+        'logs' => env('NEXUS_LOGS_ENABLED', true),
+        'sessions' => env('NEXUS_SESSIONS_ENABLED', true),
+        'flags' => env('NEXUS_FLAGS_ENABLED', true),
+        'remote_config' => env('NEXUS_REMOTE_CONFIG_ENABLED', true),
+        'links' => env('NEXUS_LINKS_ENABLED', true),
+        'surveys' => env('NEXUS_SURVEYS_ENABLED', true),
+        'push' => env('NEXUS_PUSH_ENABLED', true),
+        'in_app' => env('NEXUS_IN_APP_ENABLED', true),
+        'live_activities' => env('NEXUS_LIVE_ACTIVITIES_ENABLED', true),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Queued delivery
     |--------------------------------------------------------------------------
     | When enabled, the `nexus.queue` client (and the log handler, if it uses

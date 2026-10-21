@@ -17,6 +17,7 @@ use Inverge\Nexus\Laravel\Notifications\NexusPushChannel;
 use Inverge\Nexus\Laravel\Notifications\NexusRealtimeChannel;
 use Inverge\Nexus\Monolog\NexusLogHandler;
 use Inverge\Nexus\NexusClient;
+use Inverge\Nexus\Services;
 use Monolog\Level;
 use Monolog\Logger;
 
@@ -203,6 +204,8 @@ final class NexusServiceProvider extends ServiceProvider
             apiKey: (string) ($c['api_key'] ?? ''),
             baseUrl: (string) ($c['base_url'] ?? 'https://services.inverge.net'),
             timeout: (float) ($c['timeout'] ?? 10.0),
+            // From config (not getenv) so `php artisan config:cache` keeps working.
+            services: Services::fromArray((array) ($c['services'] ?? []), $c['enabled'] ?? true),
         );
     }
 

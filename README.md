@@ -67,6 +67,42 @@ Resources: `realtime()`, `events()`, `errors()`, `logs()`, `sessions()`,
 
 ---
 
+### Switching services off
+
+Turn a Nexus product off **without removing the code that uses it** — e.g. stop
+Live Activities with one environment variable. A switched-off service makes no
+network call (and queues no job) and never throws: writes are skipped, reads
+return their neutral value (flags → off, Remote Config → your default, lists →
+empty), and the Laravel channels skip it. All default to on.
+
+```dotenv
+NEXUS_LIVE_ACTIVITIES_ENABLED=false   # just Live Activities
+NEXUS_ENABLED=false                   # everything (e.g. local / CI)
+```
+
+| Variable | `services` key | Switches off |
+|---|---|---|
+| `NEXUS_REALTIME_ENABLED` | `realtime` | rooms / emits |
+| `NEXUS_EVENTS_ENABLED` | `events` | events |
+| `NEXUS_ERRORS_ENABLED` | `errors` | error capture |
+| `NEXUS_LOGS_ENABLED` | `logs` | logs |
+| `NEXUS_SESSIONS_ENABLED` | `sessions` | sessions |
+| `NEXUS_FLAGS_ENABLED` | `flags` | feature flags (→ your defaults) |
+| `NEXUS_REMOTE_CONFIG_ENABLED` | `remote_config` | Remote Config (→ your defaults) |
+| `NEXUS_LINKS_ENABLED` | `links` | deep links |
+| `NEXUS_SURVEYS_ENABLED` | `surveys` | surveys |
+| `NEXUS_PUSH_ENABLED` | `push` | push notifications |
+| `NEXUS_IN_APP_ENABLED` | `in_app` | in-app messages |
+| `NEXUS_LIVE_ACTIVITIES_ENABLED` | `live_activities` | Live Activities |
+
+`false`, `0`, `off`, `no` mean off. Plain PHP reads them from the environment;
+Laravel reads them through `config/nexus.php` (`enabled` + `services`), so
+`php artisan config:cache` keeps working. In code:
+`Config::fromArray($key, ['services' => ['push' => false]])` (unknown names are
+rejected), and `$nexus->enabled(Services::PUSH)` tells you whether one is on.
+
+---
+
 ## 3. Laravel setup
 
 The service provider auto‑registers. Publish config if you want to tweak it:

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Inverge\Nexus\Resource;
 
+use Inverge\Nexus\Services;
+
 /**
  * Structured logging. Levels: trace, debug, info, warn, error, fatal.
  */
@@ -69,6 +71,9 @@ final class Logs extends AbstractResource
      */
     public function batch(array $logs, array $context = []): int
     {
+        if (!$this->client->enabled(Services::LOGS)) {
+            return 0; // switched off (NEXUS_LOGS_ENABLED=false): nothing written
+        }
         $body = $this->compact([
             'logs' => array_values($logs),
             'release' => $context['release'] ?? null,
