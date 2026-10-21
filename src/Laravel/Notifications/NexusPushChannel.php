@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Inverge\Nexus\Laravel\Notifications;
 
+use Inverge\Nexus\Services;
 use Inverge\Nexus\NexusClient;
 
 /**
@@ -41,6 +42,9 @@ final class NexusPushChannel
     {
         if (!method_exists($notification, 'toNexusPush')) {
             return null;
+        }
+        if (!$this->nexus->enabled(Services::PUSH)) {
+            return null; // switched off via NEXUS_PUSH_ENABLED — skip without building the message
         }
 
         $message = $notification->toNexusPush($notifiable);

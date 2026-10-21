@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Inverge\Nexus\Laravel\Notifications;
 
+use Inverge\Nexus\Services;
 use Inverge\Nexus\NexusClient;
 
 /**
@@ -42,6 +43,9 @@ final class NexusLiveActivityChannel
     {
         if (!method_exists($notification, 'toNexusLiveActivity')) {
             return null;
+        }
+        if (!$this->nexus->enabled(Services::LIVE_ACTIVITIES)) {
+            return null; // switched off via NEXUS_LIVE_ACTIVITIES_ENABLED — skip without building the message
         }
 
         $message = $notification->toNexusLiveActivity($notifiable);
