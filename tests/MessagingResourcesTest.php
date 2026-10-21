@@ -220,4 +220,87 @@ final class MessagingResourcesTest extends TestCase
         // Must be an object ({}), never [] — the API validates it.
         $this->assertInstanceOf(\stdClass::class, $transport->lastRequest()['json']['contentState']);
     }
+
+    public function testLiveActivityTemplatedStart(): void
+    {
+        [$client, $transport] = $this->make(new ApiResponse(200, '{"ios":1,"android":2,"iosTargets":1}'));
+
+        $result = $client->liveActivities()->template('order_tracking', 'order_42')
+            ->step('pending')
+            ->etaAt(new \DateTimeImmutable('2026-10-21T12:00:00Z'))
+            ->value('driver', 'Ahmed')
+            ->values(['liters' => 500])
+            ->toUser('u_1')
+            ->lang('ckb')
+            ->alert('Order received', '500 L')
+            ->start();
+
+        $this->assertSame(1, $result['iosTargets']);
+        $req = $transport->lastRequest();
+        $this->assertSame('https://api.example.test/partner/live-activities/start', $req['url']);
+        $this->assertSame('order_tracking', $req['json']['template']);
+        $this->assertArrayNotHasKey('activityType', $req['json']); // the server targets the SDK widget's type
+        $this->assertArrayNotHasKey('contentState', $req['json']);
+        $this->assertSame(['step' => 'pending', 'etaAt' => 1792584000, 'values' => ['driver' => 'Ahmed', 'liters' => 500]], $req['json']['data']);
+        $this->assertSame(['u_1'], $req['json']['distinctIds']);
+        $this->assertSame('ckb', $req['json']['lang']);
+        $this->assertSame(['title' => 'Order received', 'body' => '500 L'], $req['json']['alert']);
+    }
+
+    public function testLiveActivityTemplatedPartialUpdateAndEnd(): void
+    {
+        [$client, $transport] = $this->make();
+
+        $client->liveActivities()->activity('order_42')->step('arrived')->progress(0.5)->update();
+        $u = $transport->lastRequest();
+        $this->assertSame('https://api.example.test/partner/live-activities/order_42/update', $u['url']);
+        $this->assertSame(['data' => ['step' => 'arrived', 'progress' => 0.5]], $u['json']);
+
+        $client->liveActivities()->activity('order_42')->step('completed')->end();
+        $this->assertSame(['data' => ['step' => 'completed']], $transport->lastRequest()['json']);
+
+        $client->liveActivities()->activity('order_42')->canceled()->end();
+        $this->assertSame(['data' => ['state' => 'canceled']], $transport->lastRequest()['json']);
+    }
+
+    public function testLiveActivityProgressAloneStaysPlain(): void
+    {
+        [$client, $transport] = $this->make();
+        $client->liveActivities()->activity('order_42')->status('On the way')->progress(70)->update();
+        $this->assertSame(['contentState' => ['status' => 'On the way', 'progress' => 70]], $transport->lastRequest()['json']);
+    }
+
+    public function testLiveActivityTemplatePlainMethodsAndEmptyData(): void
+    {
+        [$client, $transport] = $this->make();
+
+        $client->liveActivities()->startTemplate('order_tracking', 'o1');
+        $data = $transport->lastRequest()['json']['data'];
+        $this->assertInstanceOf(\stdClass::class, $data); // encodes as {} — never []
+        $this->assertSame('{}', json_encode($data));
+
+        $client->liveActivities()->startTemplate(['layout' => 'steps', 'steps' => [['id' => 'a'], ['id' => 'b']]], 'o2', ['step' => 'a']);
+        $this->assertCount(2, $transport->lastRequest()['json']['template']['steps']);
+
+        $client->liveActivities()->updateData('o2', ['step' => 'b', 'etaAt' => null]);
+        $this->assertSame(['data' => ['step' => 'b', 'etaAt' => null]], $transport->lastRequest()['json']); // null clears it
+
+        $client->liveActivities()->end('o2', ['data' => ['state' => 'done']]);
+        $this->assertSame(['data' => ['state' => 'done']], $transport->lastRequest()['json']);
+    }
+
+    public function testLiveActivityEtaAcceptsMilliseconds(): void
+    {
+        [$client, $transport] = $this->make();
+        $client->liveActivities()->template('t', 'o')->etaAt(1792584000123)->start();
+        $this->assertSame(1792584000, $transport->lastRequest()['json']['data']['etaAt']);
+    }
+
+    public function testLiveActivityStartNeedsTemplateOrType(): void
+    {
+        [$client] = $this->make();
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/template/');
+        $client->liveActivities()->activity('o')->step('a')->start();
+    }
 }

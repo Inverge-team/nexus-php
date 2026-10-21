@@ -12,7 +12,13 @@ use Inverge\Nexus\LiveActivity\LiveActivityBuilder;
  * classic server-side use case: your backend starts an activity when an order /
  * ride / match begins, updates it as the status changes, and ends it when done.
  *
- * Prefer the fluent builder:
+ * Templated (recommended) — design it once in the Nexus console; the mobile
+ * SDKs render it on iOS + Android in each device's language, and you send only
+ * data:
+ * `$nexus->liveActivities()->template('order_tracking', 'order_42')->step('pending')->etaAt($eta)->value('driver', 'Ahmed')->toUser('u_1')->start();`
+ * then `$nexus->liveActivities()->activity('order_42')->step('arrived')->update();`
+ *
+ * Plain (your own iOS widget):
  * `$nexus->liveActivities()->activity('DeliveryAttributes', 'order_42')->status('Preparing')->progress(20)->toUser('u_1')->start();`
  */
 final class LiveActivities extends AbstractResource
@@ -27,6 +33,78 @@ final class LiveActivities extends AbstractResource
         return $activityId === null
             ? new LiveActivityBuilder($this->client, $activityTypeOrId)
             : new LiveActivityBuilder($this->client, $activityId, $activityTypeOrId);
+    }
+
+    /**
+     * A templated activity: `$template` is a template key from the Nexus console
+     * (e.g. 'order_tracking') or an inline design array.
+     *
+     * @param string|array<string, mixed> $template
+     */
+    public function template(string|array $template, string $activityId): LiveActivityBuilder
+    {
+        return new LiveActivityBuilder($this->client, $activityId, null, $template);
+    }
+
+    /**
+     * Start a templated activity. `$data`: step, state, progress (0–1), etaAt
+     * (unix seconds), values (for the template's {{placeholders}}). Each device
+     * gets its own language unless `lang` forces one.
+     *
+     * @param string|array<string, mixed> $template
+     * @param array<string, mixed> $data
+     * @param array{distinctIds?:list<string>,lang?:string,alert?:array{title:string,body?:string},attributes?:array<string,mixed>,staleDate?:string,priority?:int} $options
+     *
+     * @return array<mixed> { ios, android, iosTargets, iosWarning? }
+     */
+    public function startTemplate(string|array $template, string $activityId, array $data = [], array $options = []): array
+    {
+        return $this->client->request('POST', '/partner/live-activities/start', $this->compact([
+            'template' => $template,
+            'activityId' => $activityId,
+            'data' => self::object($data),
+            'distinctIds' => ($options['distinctIds'] ?? null) ?: null,
+            'lang' => $options['lang'] ?? null,
+            'alert' => ($options['alert'] ?? null) ?: null,
+            'attributes' => ($options['attributes'] ?? null) ?: null,
+            'staleDate' => $options['staleDate'] ?? null,
+            'priority' => $options['priority'] ?? null,
+        ])) ?? [];
+    }
+
+    /**
+     * Update a templated activity with partial data — merged server-side (a
+     * `null` inside `$data` clears that field).
+     *
+     * @param array<string, mixed> $data
+     * @param array{staleDate?:string,priority?:int} $options
+     *
+     * @return array<mixed> { ios, android }
+     */
+    public function updateData(string $activityId, array $data, array $options = []): array
+    {
+        return $this->client->request('POST', '/partner/live-activities/'.rawurlencode($activityId).'/update', $this->compact([
+            'data' => self::object($data),
+            'staleDate' => $options['staleDate'] ?? null,
+            'priority' => $options['priority'] ?? null,
+        ])) ?? [];
+    }
+
+    /**
+     * An array that must encode as a JSON object (an empty PHP array would be
+     * `[]`). An empty `values` is dropped for the same reason.
+     *
+     * @param array<string, mixed> $data
+     *
+     * @return array<string, mixed>|\stdClass
+     */
+    private static function object(array $data): array|\stdClass
+    {
+        if (isset($data['values']) && $data['values'] === []) {
+            unset($data['values']);
+        }
+
+        return $data === [] ? new \stdClass() : $data;
     }
 
     /**
@@ -70,16 +148,18 @@ final class LiveActivities extends AbstractResource
     }
 
     /**
-     * End the activity. Optionally pass a final `contentState` and a
-     * `dismissalDate` (ISO-8601) controlling when iOS removes it.
+     * End the activity. Optionally pass a final `contentState` (templated: final
+     * `data`, e.g. ['step' => 'completed']) and a `dismissalDate` (ISO-8601)
+     * controlling when iOS removes it.
      *
-     * @param array{contentState?:array<string,mixed>,dismissalDate?:string} $options
+     * @param array{contentState?:array<string,mixed>,data?:array<string,mixed>,dismissalDate?:string} $options
      *
      * @return array<mixed> { ios, android }
      */
     public function end(string $activityId, array $options = []): array
     {
         return $this->client->request('POST', '/partner/live-activities/'.rawurlencode($activityId).'/end', $this->compact([
+            'data' => ($options['data'] ?? null) ?: null,
             'contentState' => ($options['contentState'] ?? null) ?: null,
             'dismissalDate' => $options['dismissalDate'] ?? null,
         ])) ?? [];

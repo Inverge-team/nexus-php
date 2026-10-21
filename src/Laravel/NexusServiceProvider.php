@@ -9,7 +9,12 @@ use Illuminate\Support\ServiceProvider;
 use Inverge\Nexus\Config;
 use Illuminate\Notifications\ChannelManager;
 use Inverge\Nexus\Http\SyncDispatcher;
+use Inverge\Nexus\Laravel\Notifications\CacheDeliveryLedger;
 use Inverge\Nexus\Laravel\Notifications\NexusChannel;
+use Inverge\Nexus\Laravel\Notifications\NexusDeliveryLedger;
+use Inverge\Nexus\Laravel\Notifications\NexusLiveActivityChannel;
+use Inverge\Nexus\Laravel\Notifications\NexusPushChannel;
+use Inverge\Nexus\Laravel\Notifications\NexusRealtimeChannel;
 use Inverge\Nexus\Monolog\NexusLogHandler;
 use Inverge\Nexus\NexusClient;
 use Monolog\Level;
@@ -127,8 +132,9 @@ final class NexusServiceProvider extends ServiceProvider
     }
 
     /**
-     * Register the `'nexus'` notification driver so `via()` can return `'nexus'`.
-     * (Referencing NexusChannel::class in `via()` already works without this.)
+     * Register the notification drivers so `via()` can return `'nexus'` (every
+     * Nexus channel), `'nexus-push'`, `'nexus-live-activity'` and
+     * `'nexus-realtime'`. (Referencing the channel classes works without this.)
      */
     private function registerNotificationChannel(): void
     {
@@ -136,8 +142,15 @@ final class NexusServiceProvider extends ServiceProvider
             return;
         }
 
+        // Lets the all-in-one NexusChannel remember what a queued notification
+        // already delivered, so a retry never re-sends it.
+        $this->app->singleton(NexusDeliveryLedger::class, static fn ($app) => new CacheDeliveryLedger($app['cache']->store()));
+
         $this->app->resolving(ChannelManager::class, static function (ChannelManager $manager, $app): void {
             $manager->extend('nexus', static fn ($app) => $app->make(NexusChannel::class));
+            $manager->extend(NexusPushChannel::NAME, static fn ($app) => $app->make(NexusPushChannel::class));
+            $manager->extend(NexusLiveActivityChannel::NAME, static fn ($app) => $app->make(NexusLiveActivityChannel::class));
+            $manager->extend(NexusRealtimeChannel::NAME, static fn ($app) => $app->make(NexusRealtimeChannel::class));
         });
     }
 
