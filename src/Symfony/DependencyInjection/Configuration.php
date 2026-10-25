@@ -49,6 +49,23 @@ final class Configuration implements ConfigurationInterface
                     ->defaultValue('message_bus')
                     ->info('Message bus service id used for async delivery.')
                 ->end()
+                ->arrayNode('telescope')
+                    ->info('Request-journey tracing (Nexus Telescope).')
+                    ->canBeDisabled()
+                    ->children()
+                        ->scalarNode('service')->defaultNull()->info('Service name shown in traces.')->end()
+                        ->scalarNode('release')->defaultNull()->end()
+                        ->floatNode('sample_rate')->defaultNull()->info('null = the console\'s sample rate.')->end()
+                        ->floatNode('timeout')->defaultValue(3.0)->end()
+                        ->arrayNode('ignore_paths')->scalarPrototype()->end()->defaultValue(['/_wdt*', '/_profiler*', '/health*'])->end()
+                        ->arrayNode('ignore_commands')->scalarPrototype()->end()->defaultValue(['messenger:consume', 'cache:*', 'assets:*', 'debug:*', 'lint:*', 'list', 'help', 'nexus:*'])->end()
+                        ->arrayNode('redact_keys')->scalarPrototype()->end()->defaultValue([])->end()
+                        ->booleanNode('capture_response_bodies')->defaultTrue()->end()
+                        ->integerNode('body_size_limit')->defaultValue(64)->end()
+                        ->booleanNode('doctrine')->defaultTrue()->info('Record Doctrine DBAL queries.')->end()
+                        ->booleanNode('messenger')->defaultTrue()->info('Record Messenger messages as jobs.')->end()
+                    ->end()
+                ->end()
             ->end();
 
         return $treeBuilder;

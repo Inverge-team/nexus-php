@@ -15,6 +15,8 @@ use Inverge\Nexus\Laravel\Notifications\NexusDeliveryLedger;
 use Inverge\Nexus\Laravel\Notifications\NexusLiveActivityChannel;
 use Inverge\Nexus\Laravel\Notifications\NexusPushChannel;
 use Inverge\Nexus\Laravel\Notifications\NexusRealtimeChannel;
+use Inverge\Nexus\Laravel\Telescope\TelescopeRegistrar;
+use Inverge\Nexus\Telescope\Telescope;
 use Inverge\Nexus\Monolog\NexusLogHandler;
 use Inverge\Nexus\NexusClient;
 use Inverge\Nexus\Services;
@@ -47,6 +49,25 @@ final class NexusServiceProvider extends ServiceProvider
         });
 
         $this->app->alias(NexusClient::class, 'nexus');
+
+        $this->app->singleton(Telescope::class, static function (Application $app): Telescope {
+            /** @var array<string, mixed> $t */
+            $t = $app['config']['nexus']['telescope'] ?? [];
+
+            return $app->make(NexusClient::class)->telescope([
+                'service' => $t['service'] ?? null,
+                'release' => $t['release'] ?? null,
+                'timeout' => (float) ($t['timeout'] ?? 3.0),
+                'sample_rate' => isset($t['sample_rate']) && $t['sample_rate'] !== '' ? (float) $t['sample_rate'] : null,
+                'ignore_paths' => (array) ($t['ignore_paths'] ?? []),
+                'redact_keys' => (array) ($t['redact_keys'] ?? []),
+                'capture_response_bodies' => (bool) ($t['capture_response_bodies'] ?? true),
+                'body_size_limit' => (int) ($t['body_size_limit'] ?? 64),
+                'max_entries' => (int) ($t['max_entries'] ?? 2000),
+                'cache_dir' => $app->storagePath('framework/cache'),
+            ]);
+        });
+        $this->app->alias(Telescope::class, 'nexus.telescope');
 
         $this->app->singleton('nexus.queue', static function (Application $app): NexusClient {
             /** @var array<string, mixed> $queue */
@@ -83,6 +104,28 @@ final class NexusServiceProvider extends ServiceProvider
         $this->registerNotificationChannel();
         $this->registerLogChannel();
         $this->attachLogHandler();
+        $this->registerTelescope();
+    }
+
+    /** Request-journey tracing — see `telescope` in config/nexus.php. */
+    private function registerTelescope(): void
+    {
+        /** @var array<string, mixed> $config */
+        $config = $this->app['config']['nexus'] ?? [];
+        if (trim((string) ($config['api_key'] ?? '')) === '' || $this->app->runningUnitTests()) {
+            return;
+        }
+        try {
+            $telescope = $this->app->make(Telescope::class);
+            if (!$this->app->make(NexusClient::class)->enabled(Services::TELESCOPE)) {
+                return;
+            }
+            $registrar = new TelescopeRegistrar($this->app, $telescope, (array) ($config['telescope'] ?? []));
+            $this->app->instance(TelescopeRegistrar::class, $registrar);
+            $registrar->register();
+        } catch (\Throwable) {
+            // best-effort — never break app boot over tracing
+        }
     }
 
     /**
@@ -227,6 +270,6 @@ final class NexusServiceProvider extends ServiceProvider
     /** @return array<int, string> */
     public function provides(): array
     {
-        return [NexusClient::class, 'nexus', 'nexus.queue', SyncDispatcher::class];
+        return [NexusClient::class, 'nexus', 'nexus.queue', SyncDispatcher::class, Telescope::class, 'nexus.telescope'];
     }
 }
