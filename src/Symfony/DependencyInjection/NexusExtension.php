@@ -11,6 +11,10 @@ use Inverge\Nexus\NexusClient;
 use Inverge\Nexus\Symfony\EventListener\ExceptionSubscriber;
 use Inverge\Nexus\Symfony\Messenger\MessengerDispatcher;
 use Inverge\Nexus\Symfony\Messenger\NexusDeliveryHandler;
+use Inverge\Nexus\Symfony\Telescope\DoctrineMiddleware;
+use Inverge\Nexus\Symfony\Telescope\MessengerSubscriber;
+use Inverge\Nexus\Symfony\Telescope\TelescopeSubscriber;
+use Inverge\Nexus\Telescope\Telescope;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Extension\Extension;
@@ -83,6 +87,49 @@ final class NexusExtension extends Extension
             $telemetryClient,
             false,
         ]));
+
+        $this->loadTelescope((array) ($config['telescope'] ?? []), $container);
+    }
+
+    /** @param array<string, mixed> $t */
+    private function loadTelescope(array $t, ContainerBuilder $container): void
+    {
+        if (!($t['enabled'] ?? true)) {
+            return;
+        }
+        $telescope = (new Definition(Telescope::class))
+            ->setFactory([new Reference(NexusClient::class), 'telescope'])
+            ->setArguments([[
+                'service' => $t['service'] ?? null,
+                'release' => $t['release'] ?? null,
+                'sample_rate' => $t['sample_rate'] ?? null,
+                'timeout' => (float) ($t['timeout'] ?? 3.0),
+                'ignore_paths' => $t['ignore_paths'] ?? [],
+                'redact_keys' => $t['redact_keys'] ?? [],
+                'capture_response_bodies' => (bool) ($t['capture_response_bodies'] ?? true),
+                'body_size_limit' => (int) ($t['body_size_limit'] ?? 64),
+                'cache_dir' => '%kernel.cache_dir%',
+            ]])
+            ->setPublic(true);
+        $container->setDefinition(Telescope::class, $telescope);
+
+        $container->setDefinition(TelescopeSubscriber::class, (new Definition(TelescopeSubscriber::class, [
+            new Reference(Telescope::class),
+            $t['ignore_commands'] ?? [],
+        ]))->addTag('kernel.event_subscriber'));
+
+        if (($t['messenger'] ?? true) && interface_exists('Symfony\Component\Messenger\Stamp\StampInterface')) {
+            $container->setDefinition(MessengerSubscriber::class, (new Definition(MessengerSubscriber::class, [
+                new Reference(Telescope::class),
+            ]))->addTag('kernel.event_subscriber'));
+        }
+
+        if (($t['doctrine'] ?? true) && interface_exists('Doctrine\DBAL\Driver\Middleware')
+            && class_exists('Doctrine\DBAL\Driver\Middleware\AbstractStatementMiddleware')) {
+            $container->setDefinition(DoctrineMiddleware::class, (new Definition(DoctrineMiddleware::class, [
+                new Reference(Telescope::class),
+            ]))->addTag('doctrine.middleware'));
+        }
     }
 
     public function getAlias(): string

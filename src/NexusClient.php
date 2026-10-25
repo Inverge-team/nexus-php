@@ -21,6 +21,7 @@ use Inverge\Nexus\Resource\InApp;
 use Inverge\Nexus\Resource\LiveActivities;
 use Inverge\Nexus\Resource\Push;
 use Inverge\Nexus\Resource\Surveys;
+use Inverge\Nexus\Telescope\Telescope;
 
 /**
  * The Nexus server-side SDK. Framework-agnostic: construct once with an API key
@@ -49,6 +50,7 @@ final class NexusClient
     private Push $push;
     private InApp $inApp;
     private LiveActivities $liveActivities;
+    private ?Telescope $telescope = null;
 
     /**
      * @param Transport|null  $transport   transport for the default sync dispatcher (ignored if $dispatcher is given)
@@ -153,6 +155,18 @@ final class NexusClient
     public function liveActivities(): LiveActivities
     {
         return $this->liveActivities;
+    }
+
+    /**
+     * Request-journey tracing (Nexus Telescope). The Laravel and Symfony
+     * integrations drive it automatically; call it directly anywhere else.
+     * Options apply the first time it is created (see {@see Telescope::__construct()}).
+     *
+     * @param array<string, mixed> $options
+     */
+    public function telescope(array $options = []): Telescope
+    {
+        return $this->telescope ??= new Telescope($this, $options);
     }
 
     public function config(): Config
