@@ -58,6 +58,7 @@ final class Configuration implements ConfigurationInterface
                         ->floatNode('sample_rate')->defaultNull()->info('null = the console\'s sample rate.')->end()
                         ->floatNode('timeout')->defaultValue(3.0)->end()
                         ->arrayNode('ignore_paths')->scalarPrototype()->end()->defaultValue(['/_wdt*', '/_profiler*', '/health*'])->end()
+                        ->arrayNode('ignore_statuses')->info('Response statuses never sent: 200, 2xx or 301-304.')->scalarPrototype()->end()->defaultValue([])->end()
                         ->arrayNode('ignore_commands')->scalarPrototype()->end()->defaultValue(['messenger:consume', 'cache:*', 'assets:*', 'debug:*', 'lint:*', 'list', 'help', 'nexus:*'])->end()
                         ->arrayNode('redact_keys')->scalarPrototype()->end()->defaultValue([])->end()
                         ->booleanNode('capture_response_bodies')->defaultTrue()->end()

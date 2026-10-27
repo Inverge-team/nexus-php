@@ -105,6 +105,7 @@ final class NexusExtension extends Extension
                 'sample_rate' => $t['sample_rate'] ?? null,
                 'timeout' => (float) ($t['timeout'] ?? 3.0),
                 'ignore_paths' => $t['ignore_paths'] ?? [],
+                'ignore_statuses' => $t['ignore_statuses'] ?? [],
                 'redact_keys' => $t['redact_keys'] ?? [],
                 'capture_response_bodies' => (bool) ($t['capture_response_bodies'] ?? true),
                 'body_size_limit' => (int) ($t['body_size_limit'] ?? 64),

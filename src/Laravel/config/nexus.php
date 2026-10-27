@@ -126,6 +126,11 @@ return [
             '/telescope*', '/horizon*', '/_debugbar*', '/pulse*', '/up', '/livewire/livewire.js*',
         ],
 
+        // Requests answered with one of these statuses are not sent, with
+        // everything they recorded: `200`, `2xx` or `301-304`. Merged with the
+        // console's list. e.g. NEXUS_TELESCOPE_IGNORE_STATUSES="200,304"
+        'ignore_statuses' => array_values(array_filter(array_map('trim', explode(',', (string) env('NEXUS_TELESCOPE_IGNORE_STATUSES', ''))))),
+
         // Long-running or noisy commands (their jobs are recorded individually).
         'ignore_commands' => [
             'queue:work', 'queue:listen', 'queue:restart', 'horizon', 'horizon:*', 'schedule:run',

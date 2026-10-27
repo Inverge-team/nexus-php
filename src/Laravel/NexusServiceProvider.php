@@ -60,6 +60,7 @@ final class NexusServiceProvider extends ServiceProvider
                 'timeout' => (float) ($t['timeout'] ?? 3.0),
                 'sample_rate' => isset($t['sample_rate']) && $t['sample_rate'] !== '' ? (float) $t['sample_rate'] : null,
                 'ignore_paths' => (array) ($t['ignore_paths'] ?? []),
+                'ignore_statuses' => (array) ($t['ignore_statuses'] ?? []),
                 'redact_keys' => (array) ($t['redact_keys'] ?? []),
                 'capture_response_bodies' => (bool) ($t['capture_response_bodies'] ?? true),
                 'body_size_limit' => (int) ($t['body_size_limit'] ?? 64),

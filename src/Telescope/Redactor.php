@@ -55,6 +55,23 @@ final class Redactor
         return $data;
     }
 
+    /** `200` (exact), `2xx` (class) or `301-304` (inclusive range) against a 3-digit status. */
+    public static function statusMatch(string $pattern, string $status): bool
+    {
+        if (!preg_match('/^\d{3}$/', $status)) {
+            return false;
+        }
+        $p = strtolower(trim($pattern));
+        if (preg_match('/^\dxx$/', $p)) {
+            return $p[0] === $status[0];
+        }
+        if (preg_match('/^(\d{3})\s*-\s*(\d{3})$/', $p, $m)) {
+            return (int) $status >= (int) $m[1] && (int) $status <= (int) $m[2];
+        }
+
+        return $p === $status;
+    }
+
     public static function globMatch(string $glob, string $value): bool
     {
         $re = '#^' . implode('.*', array_map(static fn (string $p) => preg_quote($p, '#'), explode('*', $glob))) . '$#i';
