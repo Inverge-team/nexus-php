@@ -170,4 +170,25 @@ return [
             'dumps' => true,
         ],
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Shield — app & device integrity (`->middleware('nexus.shield:<resource>')`)
+    |--------------------------------------------------------------------------
+    |
+    | The app signs each request for the URL IT called (e.g.
+    | https://api.example.com/v3/api/...). Behind a proxy, tunnel or load
+    | balancer, Laravel may see a different scheme/host (http://127.0.0.1:8000),
+    | and verification fails with `proof_url`. Set `url` to the public origin
+    | the app talks to, and the middleware verifies against that + the request
+    | path. Leave it null only when Laravel already sees the public URL (e.g.
+    | with trusted proxies configured).
+    |
+    | `fail_closed`: refuse requests when Nexus can't be reached (default: let
+    | them through — Shield never takes your API down).
+    */
+    'shield' => [
+        'url' => env('NEXUS_SHIELD_URL'),
+        'fail_closed' => (bool) env('NEXUS_SHIELD_FAIL_CLOSED', false),
+    ],
 ];

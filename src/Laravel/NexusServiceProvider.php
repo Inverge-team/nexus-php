@@ -102,9 +102,18 @@ final class NexusServiceProvider extends ServiceProvider
         }
 
         $this->registerNotificationChannel();
+        $this->registerShieldMiddleware();
         $this->registerLogChannel();
         $this->attachLogHandler();
         $this->registerTelescope();
+    }
+
+    /** `->middleware('nexus.shield:checkout')` — verify Shield tokens on a route. */
+    private function registerShieldMiddleware(): void
+    {
+        if ($this->app->bound('router')) {
+            $this->app->make('router')->aliasMiddleware('nexus.shield', Shield\VerifyShield::class);
+        }
     }
 
     /** Request-journey tracing — see `telescope` in config/nexus.php. */

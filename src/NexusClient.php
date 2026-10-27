@@ -17,6 +17,7 @@ use Inverge\Nexus\Resource\Logs;
 use Inverge\Nexus\Resource\RemoteConfig;
 use Inverge\Nexus\Resource\Realtime;
 use Inverge\Nexus\Resource\Sessions;
+use Inverge\Nexus\Resource\Shield;
 use Inverge\Nexus\Resource\InApp;
 use Inverge\Nexus\Resource\LiveActivities;
 use Inverge\Nexus\Resource\Push;
@@ -50,6 +51,7 @@ final class NexusClient
     private Push $push;
     private InApp $inApp;
     private LiveActivities $liveActivities;
+    private Shield $shield;
     private ?Telescope $telescope = null;
 
     /**
@@ -75,6 +77,7 @@ final class NexusClient
         $this->push = new Push($this);
         $this->inApp = new InApp($this);
         $this->liveActivities = new LiveActivities($this);
+        $this->shield = new Shield($this);
     }
 
     /**
@@ -167,6 +170,12 @@ final class NexusClient
     public function telescope(array $options = []): Telescope
     {
         return $this->telescope ??= new Telescope($this, $options);
+    }
+
+    /** App & device integrity: verify tokens your apps send. */
+    public function shield(): Shield
+    {
+        return $this->shield;
     }
 
     public function config(): Config
