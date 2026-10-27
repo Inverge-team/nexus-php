@@ -34,6 +34,7 @@ final class Services
     public const IN_APP = 'in_app';
     public const LIVE_ACTIVITIES = 'live_activities';
     public const TELESCOPE = 'telescope';
+    public const SHIELD = 'shield';
 
     /** Service → the environment variable that switches it. */
     public const ENV = [
@@ -50,6 +51,7 @@ final class Services
         self::IN_APP => 'NEXUS_IN_APP_ENABLED',
         self::LIVE_ACTIVITIES => 'NEXUS_LIVE_ACTIVITIES_ENABLED',
         self::TELESCOPE => 'NEXUS_TELESCOPE_ENABLED',
+        self::SHIELD => 'NEXUS_SHIELD_ENABLED',
     ];
 
     /** The master switch. */
@@ -70,6 +72,7 @@ final class Services
         'inapp' => self::IN_APP,
         'live-activities' => self::LIVE_ACTIVITIES,
         'telescope' => self::TELESCOPE,
+        'shield' => self::SHIELD,
     ];
 
     /** @param array<string, bool> $disabled service => true for each one that's off */
