@@ -62,6 +62,7 @@ final class Telescope
      *   max_entries?: int,
      *   ignore_types?: list<string>,
      *   ignore_paths?: list<string>,
+     *   ignore_statuses?: list<string|int>,
      *   redact_keys?: list<string>,
      *   sample_rate?: float|null,
      *   capture_response_bodies?: bool,
@@ -81,6 +82,7 @@ final class Telescope
             'max_entries' => 2000,
             'ignore_types' => [],
             'ignore_paths' => [],
+            'ignore_statuses' => [],
             'redact_keys' => [],
             'sample_rate' => null,
             'capture_response_bodies' => true,
@@ -135,6 +137,22 @@ final class Telescope
         $globs = array_merge((array) $this->options['ignore_paths'], (array) ($this->remote->get()['ignorePaths'] ?? []));
         foreach ($globs as $glob) {
             if (Redactor::globMatch((string) $glob, $path)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether a response status is ignored: an exact code (`200`), a class
+     * (`2xx`) or a range (`301-304`), from the options or the console.
+     */
+    public function ignoresStatus(string|int $status): bool
+    {
+        $patterns = array_merge((array) $this->options['ignore_statuses'], (array) ($this->remote->get()['ignoreStatuses'] ?? []));
+        foreach ($patterns as $pattern) {
+            if (Redactor::statusMatch((string) $pattern, (string) $status)) {
                 return true;
             }
         }
@@ -222,7 +240,11 @@ final class Telescope
             if ($name !== null) {
                 $batch->name = $name;
             }
-            if ($this->keep($batch)) {
+            // An ignored response status drops the request with every entry,
+            // before anything leaves the app.
+            $responseStatus = $batch->status ?? (isset($batch->content['responseStatus']) ? (string) $batch->content['responseStatus'] : null);
+            $ignored = $batch->type === 'request' && $responseStatus !== null && $this->ignoresStatus($responseStatus);
+            if (!$ignored && $this->keep($batch)) {
                 $this->outbox[] = $batch->toArray();
             }
         } catch (\Throwable) {

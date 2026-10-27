@@ -164,6 +164,34 @@ final class TelescopeTest extends TestCase
         $tel->finish();
     }
 
+    public function testIgnoredStatusesAreNeverSent(): void
+    {
+        $t = new FakeTransport(new ApiResponse(202, json_encode(['written' => 1, 'config' => ['enabled' => true, 'ignoreStatuses' => ['3xx']]])));
+        $tel = $this->telescope($t, ['ignore_statuses' => ['200', '401-403']]);
+        $this->assertTrue($tel->ignoresStatus(200));
+        $this->assertTrue($tel->ignoresStatus('402'));
+        $this->assertFalse($tel->ignoresStatus('404'));
+
+        $tel->start('request', ['uri' => '/ok']);
+        $tel->query('select 1', [], 0.1, 'mysql');
+        $tel->finish(['responseStatus' => 200], '200');
+        $this->assertCount(0, $t->requests, 'an ignored status is dropped before sending');
+
+        $tel->start('request', ['uri' => '/missing']);
+        $tel->finish(['responseStatus' => 404], '404');
+        $this->assertCount(1, $t->requests);
+
+        // The console's list arrived with that delivery.
+        $tel->start('request', ['uri' => '/moved']);
+        $tel->finish(['responseStatus' => 301], '301');
+        $this->assertCount(1, $t->requests);
+
+        // Only requests: a command's exit code is not an HTTP status.
+        $tel->start('command', ['command' => 'x']);
+        $tel->finish(['exitCode' => 0], '200');
+        $this->assertCount(2, $t->requests);
+    }
+
     public function testIgnoredPathsAndEntryCap(): void
     {
         $t = new FakeTransport();
