@@ -32,6 +32,7 @@ reference live on the documentation site:
 - **[Shield](https://docs.inverge.net/products/shield/verify)** — verify a request really comes from your app on a real device.
 - **[Telescope](https://docs.inverge.net/products/telescope/php)** — request-journey tracing for requests, jobs, commands and
   scheduled tasks, with N+1, duplicate and slow queries flagged.
+- **[DocStore](https://docs.inverge.net/sdks/php/reference/docstore)** — the document database: queries, transactions, history, change stream and webhook verification.
 
 ## Links
 
