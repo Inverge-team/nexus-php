@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Inverge\Nexus;
 
 use Inverge\Nexus\Contracts\Dispatcher;
+use Inverge\Nexus\DocStore\DocStore;
 use Inverge\Nexus\Contracts\Transport;
 use Inverge\Nexus\Exception\ApiException;
 use Inverge\Nexus\Http\CurlTransport;
@@ -39,6 +40,9 @@ final class NexusClient
 {
     private readonly Dispatcher $dispatcher;
 
+    /** DocStore always runs synchronously, even when telemetry goes through a queue. */
+    private readonly Dispatcher $syncDispatcher;
+
     private Realtime $realtime;
     private Events $events;
     private Errors $errors;
@@ -63,7 +67,8 @@ final class NexusClient
         ?Transport $transport = null,
         ?Dispatcher $dispatcher = null,
     ) {
-        $this->dispatcher = $dispatcher ?? new SyncDispatcher($config, $transport ?? new CurlTransport());
+        $this->syncDispatcher = new SyncDispatcher($config, $transport ?? new CurlTransport());
+        $this->dispatcher = $dispatcher ?? $this->syncDispatcher;
 
         $this->realtime = new Realtime($this);
         $this->events = new Events($this);
@@ -176,6 +181,18 @@ final class NexusClient
     public function shield(): Shield
     {
         return $this->shield;
+    }
+
+    /**
+     * Nexus DocStore. With a service key (`$serviceKey` or
+     * `NEXUS_DOCSTORE_SERVICE_KEY`) security rules are bypassed — server use
+     * only; with `$token` (an end user's JWT) rules apply as that user.
+     * `->asUser($token)` switches later.
+     */
+    public function docstore(?string $serviceKey = null, ?string $token = null): DocStore
+    {
+        $key = $serviceKey ?? (getenv(DocStore::SERVICE_KEY_ENV) ?: null);
+        return new DocStore($this->syncDispatcher, fn (): bool => $this->enabled(Services::DOCSTORE), $key, $token);
     }
 
     public function config(): Config
