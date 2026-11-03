@@ -10,6 +10,7 @@ use Inverge\Nexus\Contracts\Transport;
 use Inverge\Nexus\Exception\ApiException;
 use Inverge\Nexus\Http\CurlTransport;
 use Inverge\Nexus\Http\SyncDispatcher;
+use Inverge\Nexus\Messaging\Messaging;
 use Inverge\Nexus\Resource\Errors;
 use Inverge\Nexus\Resource\Events;
 use Inverge\Nexus\Resource\Flags;
@@ -40,8 +41,8 @@ final class NexusClient
 {
     private readonly Dispatcher $dispatcher;
 
-    /** DocStore always runs synchronously, even when telemetry goes through a queue. */
-    private readonly Dispatcher $syncDispatcher;
+    /** DocStore and messaging always run synchronously, even when telemetry goes through a queue. */
+    private readonly SyncDispatcher $syncDispatcher;
 
     private Realtime $realtime;
     private Events $events;
@@ -57,6 +58,7 @@ final class NexusClient
     private LiveActivities $liveActivities;
     private Shield $shield;
     private ?Telescope $telescope = null;
+    private ?Messaging $messaging = null;
 
     /**
      * @param Transport|null  $transport   transport for the default sync dispatcher (ignored if $dispatcher is given)
@@ -193,6 +195,16 @@ final class NexusClient
     {
         $key = $serviceKey ?? (getenv(DocStore::SERVICE_KEY_ENV) ?: null);
         return new DocStore($this->syncDispatcher, fn (): bool => $this->enabled(Services::DOCSTORE), $key, $token);
+    }
+
+    /**
+     * Messaging — send on WhatsApp, Telegram, SMS and the other channels, read
+     * delivery, upload files and run OTP verifications. Always synchronous: the
+     * caller needs the message id, and a queue cannot carry an upload.
+     */
+    public function messaging(): Messaging
+    {
+        return $this->messaging ??= new Messaging($this->syncDispatcher, fn (): bool => $this->enabled(Services::MESSAGING));
     }
 
     public function config(): Config

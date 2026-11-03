@@ -36,6 +36,7 @@ final class Services
     public const TELESCOPE = 'telescope';
     public const SHIELD = 'shield';
     public const DOCSTORE = 'docstore';
+    public const MESSAGING = 'messaging';
 
     /** Service → the environment variable that switches it. */
     public const ENV = [
@@ -54,6 +55,7 @@ final class Services
         self::TELESCOPE => 'NEXUS_TELESCOPE_ENABLED',
         self::SHIELD => 'NEXUS_SHIELD_ENABLED',
         self::DOCSTORE => 'NEXUS_DOCSTORE_ENABLED',
+        self::MESSAGING => 'NEXUS_MESSAGING_ENABLED',
     ];
 
     /** The master switch. */
@@ -76,6 +78,7 @@ final class Services
         'telescope' => self::TELESCOPE,
         'shield' => self::SHIELD,
         'docstore' => self::DOCSTORE,
+        'messaging' => self::MESSAGING,
     ];
 
     /** @param array<string, bool> $disabled service => true for each one that's off */
