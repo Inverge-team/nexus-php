@@ -142,6 +142,17 @@ final class MessagingApiTest extends TestCase
         $this->assertSame(['https://api.example.test/partner/messaging/verifications/ver_1/cancel', null], [$cancel['url'], $cancel['json']]);
     }
 
+    public function testVerificationChannelPlan(): void
+    {
+        $t = new FakeTransport();
+        $this->client($t)->messaging()->verifications()->start('+9647501234567',
+            channels: ['telegram', 'whatsapp'], whatsappTemplate: 'acme_login', whatsappLanguage: 'ar');
+        $this->assertSame(
+            '{"to":"+9647501234567","channels":["telegram","whatsapp"],"whatsappTemplate":"acme_login","whatsappLanguage":"ar"}',
+            self::wire($t->lastRequest()['json']),
+        );
+    }
+
     public function testSwitchedOffMakesNoCall(): void
     {
         $t = new FakeTransport();

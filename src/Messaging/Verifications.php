@@ -7,10 +7,10 @@ namespace Inverge\Nexus\Messaging;
 use Inverge\Nexus\Http\SyncDispatcher;
 
 /**
- * One-time codes over Telegram, with SMS fallback.
+ * One-time codes on WhatsApp first, then Telegram.
  *
  * ```php
- * $v = $nexus->messaging()->verifications()->start('+9647501234567', smsFallback: true);
+ * $v = $nexus->messaging()->verifications()->start('+9647501234567');
  * if ($nexus->messaging()->verifications()->check($v['id'], $code)['valid']) { … }
  * ```
  */
@@ -27,12 +27,21 @@ final class Verifications
     /**
      * Send a code to `$to` (E.164). Keep the returned `id` to check it.
      *
+     * The code goes out on WhatsApp first and moves to Telegram when WhatsApp
+     * refuses it or hasn't delivered it within `$fallbackAfter` seconds;
+     * `$channels` sets another order. `$smsFallback` also tries SMS last, where
+     * SMS is available.
+     *
+     * @param list<string>|null         $channels e.g. ['whatsapp', 'telegram']
      * @param array<string, mixed>|null $metadata
      *
      * @return array<string, mixed>|null
      */
     public function start(
         string $to,
+        ?array $channels = null,
+        ?string $whatsappTemplate = null,
+        ?string $whatsappLanguage = null,
         ?int $codeLength = null,
         ?int $ttl = null,
         bool $smsFallback = false,
@@ -49,6 +58,9 @@ final class Verifications
 
         return $this->call('POST', self::BASE, Messaging::compact([
             'to' => $to,
+            'channels' => $channels === null ? null : array_values($channels),
+            'whatsappTemplate' => $whatsappTemplate,
+            'whatsappLanguage' => $whatsappLanguage,
             'codeLength' => $codeLength,
             'ttl' => $ttl,
             'fallback' => $smsFallback ? 'sms' : null,
