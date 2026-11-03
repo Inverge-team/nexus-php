@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Inverge\Nexus\Http;
 
+use Inverge\Nexus\Contracts\RawTransport;
 use Inverge\Nexus\Contracts\Transport;
 use Inverge\Nexus\Exception\TransportException;
 use Psr\Http\Client\ClientExceptionInterface;
@@ -17,7 +18,7 @@ use Psr\Http\Message\StreamFactoryInterface;
  *
  * Requires psr/http-client + psr/http-factory (dev-suggested, not a hard dep).
  */
-final class Psr18Transport implements Transport
+final class Psr18Transport implements Transport, RawTransport
 {
     public function __construct(
         private readonly ClientInterface $client,
@@ -28,18 +29,33 @@ final class Psr18Transport implements Transport
 
     public function send(string $method, string $url, array $headers, ?array $json, float $timeout): ApiResponse
     {
+        $encoded = null;
+        if ($json !== null) {
+            $encoded = json_encode($json, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            if ($encoded === false) {
+                throw new TransportException('Failed to encode the request body as JSON: ' . json_last_error_msg());
+            }
+        }
+
+        return $this->exec($method, $url, $headers, $encoded);
+    }
+
+    public function sendRaw(string $method, string $url, array $headers, string $body, float $timeout): ApiResponse
+    {
+        return $this->exec($method, $url, $headers, $body);
+    }
+
+    /** @param array<string, string> $headers */
+    private function exec(string $method, string $url, array $headers, ?string $payload): ApiResponse
+    {
         $request = $this->requestFactory->createRequest(strtoupper($method), $url);
 
         foreach ($headers as $name => $value) {
             $request = $request->withHeader($name, $value);
         }
 
-        if ($json !== null) {
-            $encoded = json_encode($json, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-            if ($encoded === false) {
-                throw new TransportException('Failed to encode the request body as JSON: ' . json_last_error_msg());
-            }
-            $request = $request->withBody($this->streamFactory->createStream($encoded));
+        if ($payload !== null) {
+            $request = $request->withBody($this->streamFactory->createStream($payload));
         }
 
         try {

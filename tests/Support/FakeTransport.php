@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 namespace Inverge\Nexus\Tests\Support;
 
+use Inverge\Nexus\Contracts\RawTransport;
 use Inverge\Nexus\Contracts\Transport;
 use Inverge\Nexus\Http\ApiResponse;
 
 /** In-memory transport: records requests, returns queued responses. */
-final class FakeTransport implements Transport
+final class FakeTransport implements Transport, RawTransport
 {
     /** @var list<array{method:string,url:string,headers:array<string,string>,json:array<string,mixed>|null}> */
     public array $requests = [];
@@ -34,6 +35,19 @@ final class FakeTransport implements Transport
     }
 
     /** @return array{method:string,url:string,headers:array<string,string>,json:array<string,mixed>|null} */
+    public function sendRaw(string $method, string $url, array $headers, string $body, float $timeout): ApiResponse
+    {
+        $this->requests[] = [
+            'method' => $method,
+            'url' => $url,
+            'headers' => $headers,
+            'json' => null,
+            'body' => $body,
+        ];
+
+        return array_shift($this->queue) ?? new ApiResponse(200, '{}');
+    }
+
     public function lastRequest(): array
     {
         if ($this->requests === []) {

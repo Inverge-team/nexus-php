@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Inverge\Nexus\Http;
 
+use Inverge\Nexus\Contracts\RawTransport;
 use Inverge\Nexus\Contracts\Transport;
 use Inverge\Nexus\Exception\TransportException;
 
@@ -11,9 +12,20 @@ use Inverge\Nexus\Exception\TransportException;
  * Zero-dependency HTTP transport built on ext-curl. The default — works in any
  * PHP environment without pulling in a client library.
  */
-final class CurlTransport implements Transport
+final class CurlTransport implements Transport, RawTransport
 {
     public function send(string $method, string $url, array $headers, ?array $json, float $timeout): ApiResponse
+    {
+        return $this->exec($method, $url, $headers, $json === null ? null : self::encode($json), $timeout);
+    }
+
+    public function sendRaw(string $method, string $url, array $headers, string $body, float $timeout): ApiResponse
+    {
+        return $this->exec($method, $url, $headers, $body, $timeout);
+    }
+
+    /** @param array<string, string> $headers */
+    private function exec(string $method, string $url, array $headers, ?string $payload, float $timeout): ApiResponse
     {
         $handle = curl_init($url);
         if ($handle === false) {
@@ -33,8 +45,8 @@ final class CurlTransport implements Transport
             CURLOPT_HTTPHEADER => $headerLines,
         ];
 
-        if ($json !== null) {
-            $options[CURLOPT_POSTFIELDS] = self::encode($json);
+        if ($payload !== null) {
+            $options[CURLOPT_POSTFIELDS] = $payload;
         }
 
         curl_setopt_array($handle, $options);
