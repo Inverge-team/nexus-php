@@ -7,7 +7,7 @@ namespace Inverge\Nexus\Messaging;
 use Inverge\Nexus\Http\SyncDispatcher;
 
 /**
- * One-time codes on WhatsApp first, then Telegram.
+ * One-time codes on WhatsApp or Telegram, whichever is cheaper for the number.
  *
  * ```php
  * $v = $nexus->messaging()->verifications()->start('+9647501234567');
@@ -27,9 +27,9 @@ final class Verifications
     /**
      * Send a code to `$to` (E.164). Keep the returned `id` to check it.
      *
-     * The code goes out on WhatsApp first and moves to Telegram when WhatsApp
-     * refuses it or hasn't delivered it within `$fallbackAfter` seconds;
-     * `$channels` sets another order. `$smsFallback` also tries SMS last, where
+     * The code goes out on whichever of WhatsApp and Telegram is cheaper for the
+     * number, and moves to the other when that one refuses it or hasn't
+     * delivered it within `$fallbackAfter` seconds; `$channels` sets the order. `$smsFallback` also tries SMS last, where
      * SMS is available.
      *
      * @param list<string>|null         $channels e.g. ['whatsapp', 'telegram']
