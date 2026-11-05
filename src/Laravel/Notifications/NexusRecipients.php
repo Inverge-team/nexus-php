@@ -52,6 +52,25 @@ final class NexusRecipients
         return [];
     }
 
+    /**
+     * A stable id for the notifiable — the same on a queue retry, where the
+     * object is rebuilt from the payload: class + key, or its on-demand routes.
+     */
+    public static function identify(object $notifiable): string
+    {
+        // get_object_vars() from here sees public properties only — never trips
+        // over a private `$routes` on someone's own class.
+        $public = get_object_vars($notifiable);
+        if (method_exists($notifiable, 'getKey')) {
+            return $notifiable::class.':'.$notifiable->getKey();
+        }
+        if (\array_key_exists('routes', $public)) { // AnonymousNotifiable (Notification::route())
+            return 'route:'.md5((string) json_encode($public['routes']));
+        }
+
+        return $notifiable::class.':'.md5((string) json_encode($public));
+    }
+
     public static function missing(object $notifiable, string $channel): \LogicException
     {
         return new \LogicException(sprintf(
