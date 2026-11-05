@@ -13,6 +13,7 @@ use Inverge\Nexus\Laravel\Notifications\CacheDeliveryLedger;
 use Inverge\Nexus\Laravel\Notifications\NexusChannel;
 use Inverge\Nexus\Laravel\Notifications\NexusDeliveryLedger;
 use Inverge\Nexus\Laravel\Notifications\NexusLiveActivityChannel;
+use Inverge\Nexus\Laravel\Notifications\NexusMessagingChannel;
 use Inverge\Nexus\Laravel\Notifications\NexusPushChannel;
 use Inverge\Nexus\Laravel\Notifications\NexusRealtimeChannel;
 use Inverge\Nexus\Laravel\Telescope\TelescopeRegistrar;
@@ -187,8 +188,8 @@ final class NexusServiceProvider extends ServiceProvider
 
     /**
      * Register the notification drivers so `via()` can return `'nexus'` (every
-     * Nexus channel), `'nexus-push'`, `'nexus-live-activity'` and
-     * `'nexus-realtime'`. (Referencing the channel classes works without this.)
+     * Nexus channel), `'nexus-push'`, `'nexus-live-activity'`,
+     * `'nexus-realtime'` and `'nexus-messaging'`. (Referencing the channel classes works without this.)
      */
     private function registerNotificationChannel(): void
     {
@@ -205,6 +206,7 @@ final class NexusServiceProvider extends ServiceProvider
             $manager->extend(NexusPushChannel::NAME, static fn ($app) => $app->make(NexusPushChannel::class));
             $manager->extend(NexusLiveActivityChannel::NAME, static fn ($app) => $app->make(NexusLiveActivityChannel::class));
             $manager->extend(NexusRealtimeChannel::NAME, static fn ($app) => $app->make(NexusRealtimeChannel::class));
+            $manager->extend(NexusMessagingChannel::NAME, static fn ($app) => $app->make(NexusMessagingChannel::class));
         });
     }
 

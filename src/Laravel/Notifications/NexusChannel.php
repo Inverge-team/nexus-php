@@ -15,6 +15,7 @@ use Inverge\Nexus\NexusClient;
  * | `toNexusPush()`         | push notification ({@see NexusPushChannel})     |
  * | `toNexusLiveActivity()` | Live Activity ({@see NexusLiveActivityChannel}) |
  * | `toNexusRealtime()`     | realtime / events / logs / errors ({@see NexusRealtimeChannel}) |
+ * | `toNexusMessaging()`    | WhatsApp / Telegram / SMS / … ({@see NexusMessagingChannel}) |
  *
  * ```php
  * public function via(object $notifiable): array
@@ -43,16 +44,17 @@ final class NexusChannel
         NexusClient $nexus,
         private readonly ?NexusDeliveryLedger $ledger = null,
     ) {
-        // Order: the push first (what the user notices), then the Live Activity, then realtime.
+        // Order: the push first (what the user notices), then the Live Activity, then realtime, then messaging.
         $this->parts = [
             'push' => [NexusPushChannel::NAME, new NexusPushChannel($nexus)],
             'liveActivity' => [NexusLiveActivityChannel::NAME, new NexusLiveActivityChannel($nexus)],
             'realtime' => [NexusRealtimeChannel::NAME, new NexusRealtimeChannel($nexus)],
+            'messaging' => [NexusMessagingChannel::NAME, new NexusMessagingChannel($nexus)],
         ];
     }
 
     /**
-     * @return array<string, mixed> each sent product's result, keyed push / liveActivity / realtime
+     * @return array<string, mixed> each sent product's result, keyed push / liveActivity / realtime / messaging
      *
      * @throws \Throwable the first failure, after every product was attempted
      */
@@ -110,6 +112,7 @@ final class NexusChannel
             NexusPushChannel::class => NexusPushChannel::NAME,
             NexusLiveActivityChannel::class => NexusLiveActivityChannel::NAME,
             NexusRealtimeChannel::class => NexusRealtimeChannel::NAME,
+            NexusMessagingChannel::class => NexusMessagingChannel::NAME,
         ];
         $names = [];
         foreach ($via as $channel) {
@@ -128,20 +131,12 @@ final class NexusChannel
     private function ledgerKey(object $notifiable, object $notification, string $product): ?string
     {
         // get_object_vars() from here sees public properties only — never trips
-        // over a private `$id` / `$routes` on someone's own class.
+        // over a private `$id` on someone's own class.
         $id = get_object_vars($notification)['id'] ?? null;
         if ($this->ledger === null || !\is_string($id) || $id === '') {
             return null; // a synchronous send has no retries to guard
         }
-        $public = get_object_vars($notifiable);
-        if (method_exists($notifiable, 'getKey')) {
-            $who = $notifiable::class.':'.$notifiable->getKey();
-        } elseif (\array_key_exists('routes', $public)) { // AnonymousNotifiable (Notification::route())
-            $who = 'route:'.md5((string) json_encode($public['routes']));
-        } else {
-            // Stable across a queue retry (the object is rebuilt from the payload).
-            $who = $notifiable::class.':'.md5((string) json_encode($public));
-        }
+        $who = NexusRecipients::identify($notifiable);
 
         return 'nexus:delivered:'.md5($id.'|'.$who).':'.$product;
     }
