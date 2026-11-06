@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Inverge\Nexus\Laravel\Notifications;
 
 use Inverge\Nexus\Push\PushBuilder;
+use Inverge\Nexus\Support\Conditionable;
 
 /**
  * The push a notification's `toNexusPush()` returns — the same fluent API as
@@ -17,13 +18,18 @@ use Inverge\Nexus\Push\PushBuilder;
  *     return NexusPushMessage::create('Your order shipped', 'Track it in the app')
  *         ->data(['screen' => "/orders/{$this->order->id}"])
  *         ->button('track', 'Track')
- *         ->iosBadge(1);
+ *         ->iosBadge(1)
+ *         ->when($this->order->eta, fn ($m, $eta) => $m->sendAt($eta->subHour()));
  * }
  * ```
  *
- * @method self title(string $title)
- * @method self body(string $body)
- * @method self image(string $url)
+ * `when()` / `unless()` run now, on the message — the calls the callback makes
+ * are recorded like any other.
+ *
+ * @method self title(string|array<string, string|null> $title)
+ * @method self body(string|array<string, string|null>|null $body)
+ * @method self defaultLanguage(?string $lang)
+ * @method self image(?string $url)
  * @method self data(array<string, mixed> $data)
  * @method self button(string $id, string $text, array<string, mixed> $opts = [])
  * @method self iosBadge(int $count)
@@ -43,9 +49,13 @@ use Inverge\Nexus\Push\PushBuilder;
  * @method self toSegment(string $segmentId)
  * @method self where(array<string, mixed> $filter)
  * @method self toAll()
+ * @method self sendAt(\DateTimeInterface|int|string|null $at)
+ * @method self name(?string $label)
  */
 final class NexusPushMessage
 {
+    use Conditionable;
+
     /** Calls that choose the audience — when none is made, the notifiable is the target. */
     private const TARGETING = ['toUsers', 'toUser', 'setSegments', 'toSegments', 'toSegment', 'where', 'toAll'];
 
@@ -53,7 +63,11 @@ final class NexusPushMessage
     private array $calls = [];
     private bool $targeted = false;
 
-    public static function create(?string $title = null, ?string $body = null): self
+    /**
+     * @param string|array<string, string|null>|null $title a string, or one per language (`['en' => …, 'ar' => …]`)
+     * @param string|array<string, string|null>|null $body  likewise
+     */
+    public static function create(string|array|null $title = null, string|array|null $body = null): self
     {
         $m = new self();
         if ($title !== null) {
@@ -69,7 +83,7 @@ final class NexusPushMessage
     /** @param list<mixed> $args */
     public function __call(string $method, array $args): self
     {
-        if (!method_exists(PushBuilder::class, $method) || \in_array($method, ['send', 'toArray'], true)) {
+        if (!method_exists(PushBuilder::class, $method) || \in_array($method, ['send', 'schedule', 'toArray'], true)) {
             throw new \BadMethodCallException(sprintf('%s::%s() does not exist.', self::class, $method));
         }
         $this->calls[] = [$method, $args];

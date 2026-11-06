@@ -27,8 +27,9 @@ final class Push extends AbstractResource
      * across each user's registered devices.
      *
      * `$message`:
-     *   - title (string, required)
-     *   - body, imageUrl (string)
+     *   - title (string, required) — or one per language: `['en' => …, 'ar' => …]`
+     *   - body (string or per-language map), imageUrl (string)
+     *   - defaultLanguage (string) — for devices whose language has no translation
      *   - data  (array<string,mixed>) — custom key/values delivered to the app
      *   - options (array) — rich per-platform options: buttons, androidLargeIcon,
      *     androidBigPicture, androidVisibility, iosBadge, iosRelevanceScore,
@@ -41,27 +42,88 @@ final class Push extends AbstractResource
      */
     public function send(array $distinctIds, array $message): array
     {
-        return $this->sendRaw($this->compact([
-            'distinctIds' => $distinctIds,
-            'title' => $message['title'] ?? null,
-            'body' => $message['body'] ?? null,
-            'imageUrl' => $message['imageUrl'] ?? null,
-            'data' => ($message['data'] ?? null) ?: null,
-            'options' => ($message['options'] ?? null) ?: null,
-        ]));
+        return $this->sendRaw($this->messagePayload($distinctIds, $message));
+    }
+
+    /**
+     * Deliver a transactional push to users later. `$sendAt` is a
+     * `DateTimeInterface`, epoch seconds or an ISO-8601 string with an offset.
+     * Keep the returned `id` to check on it ({@see scheduled()}) or cancel it.
+     *
+     * @param list<string>         $distinctIds
+     * @param array<string, mixed> $message
+     *
+     * @return array<mixed> { id, status, scheduledAt, sentAt, recipients, sent, failed }
+     */
+    public function schedule(array $distinctIds, array $message, \DateTimeInterface|int|string $sendAt): array
+    {
+        return $this->sendRaw(
+            $this->messagePayload($distinctIds, $message) + ['sendAt' => PushBuilder::sendAtValue($sendAt)],
+        );
+    }
+
+    /**
+     * The plain-call payload, built by the builder so per-language titles/bodies
+     * expand the same way.
+     *
+     * @param list<string>         $distinctIds
+     * @param array<string, mixed> $message
+     *
+     * @return array<string, mixed>
+     */
+    private function messagePayload(array $distinctIds, array $message): array
+    {
+        $b = $this->notification()->toUsers($distinctIds);
+        if (isset($message['title'])) {
+            $b->title($message['title']);
+        }
+        $b->body($message['body'] ?? null)
+            ->image($message['imageUrl'] ?? null)
+            ->defaultLanguage($message['defaultLanguage'] ?? null);
+        if (!empty($message['data'])) {
+            $b->data($message['data']);
+        }
+        if (!empty($message['options'])) {
+            $b->options($message['options']);
+        }
+
+        // distinctIds stays even when empty, as before (the API decides).
+        return ['distinctIds' => $distinctIds] + $b->toArray();
     }
 
     /**
      * Send a fully-assembled payload (title + targeting: distinctIds / segmentIds
-     * / filter / all). Used by the builder; call it directly if you prefer.
+     * / filter / all, optional sendAt). Used by the builder; call it directly if you prefer.
      *
      * @param array<string, mixed> $payload
      *
-     * @return array<mixed> { sent, failed, recipients }
+     * @return array<mixed> { sent, failed, recipients } — or the scheduled send when `sendAt` is set
      */
     public function sendRaw(array $payload): array
     {
         return $this->client->request('POST', '/partner/push/send', $payload) ?? [];
+    }
+
+    /**
+     * A scheduled send's status — and its sent / failed / recipients once it fired.
+     * Needs a synchronous client (a queued dispatcher can't return a result).
+     *
+     * @return array<mixed> { id, status, scheduledAt, sentAt, recipients, sent, failed }
+     */
+    public function scheduled(string $id): array
+    {
+        return $this->client->request('GET', '/partner/push/scheduled/' . rawurlencode($id)) ?? [];
+    }
+
+    /**
+     * Cancel a scheduled send before it fires. The API answers 409 once it has
+     * started sending and 404 for an unknown id (an ApiException unless silent).
+     *
+     * @return array<mixed> the canceled send
+     */
+    public function cancelScheduled(string $id): array
+    {
+        return $this->client->request('POST', '/partner/push/scheduled/' . rawurlencode($id) . '/cancel', []) ?? [];
     }
 
     /**
