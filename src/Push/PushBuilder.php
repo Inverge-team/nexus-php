@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Inverge\Nexus\Push;
 
 use Inverge\Nexus\NexusClient;
+use Inverge\Nexus\Support\Conditionable;
 
 /**
  * Fluent builder for a transactional push. Compose content, rich per-platform
@@ -21,11 +22,30 @@ use Inverge\Nexus\NexusClient;
  *     ->setSegments(['vip', 'active_7d'])   // or ->toUsers([...]) / ->toAll()
  *     ->send();                              // → ['sent' => .., 'failed' => .., 'recipients' => ..]
  * ```
+ *
+ * Branch without leaving the chain with `when()` / `unless()` (Laravel's), and
+ * deliver later with `sendAt()`:
+ *
+ * ```php
+ * $nexus->push()->notification()
+ *     ->title($title)
+ *     ->image($thumbnail)                    // null leaves it unset
+ *     ->when($ids === [], fn ($p) => $p->toSegment('All Clients'), fn ($p) => $p->toUsers($ids))
+ *     ->sendAt(new \DateTimeImmutable('tomorrow 09:00', new \DateTimeZone('Asia/Baghdad')))
+ *     ->send();                              // → ['id' => .., 'status' => 'scheduled', 'scheduledAt' => ..]
+ * ```
  */
 final class PushBuilder
 {
+    use Conditionable;
+
     private ?string $title = null;
     private ?string $body = null;
+    /** @var array<string, string> per-language titles, when title() got a map */
+    private array $titles = [];
+    /** @var array<string, string> per-language bodies, when body() got a map */
+    private array $bodies = [];
+    private ?string $defaultLanguage = null;
     private ?string $imageUrl = null;
     /** @var array<string, mixed> */
     private array $data = [];
@@ -39,6 +59,8 @@ final class PushBuilder
     /** @var array<string, mixed> */
     private array $filter = [];
     private bool $all = false;
+    private ?string $sendAt = null;
+    private ?string $name = null;
 
     public function __construct(private readonly NexusClient $client)
     {
@@ -46,23 +68,61 @@ final class PushBuilder
 
     // ---- content ----
 
-    public function title(string $title): self
+    /**
+     * The title — a string, or one per language keyed by language code:
+     * `['en' => 'Your order shipped', 'de' => 'Bestellung versandt']`. Each device gets the
+     * title for its language; an empty or missing translation falls back to the
+     * default language (see {@see defaultLanguage()}).
+     *
+     * @param string|array<string, string|null> $title
+     */
+    public function title(string|array $title): self
     {
-        $this->title = $title;
+        if (\is_array($title)) {
+            $this->titles = self::translations($title);
+            $this->title = null;
+        } else {
+            $this->title = $title;
+            $this->titles = [];
+        }
 
         return $this;
     }
 
-    public function body(string $body): self
+    /**
+     * The body — a string, or one per language like {@see title()}. `null` / `''`
+     * leaves it unset, so an optional value can be passed straight in.
+     *
+     * @param string|array<string, string|null>|null $body
+     */
+    public function body(string|array|null $body): self
     {
-        $this->body = $body;
+        if (\is_array($body)) {
+            $this->bodies = self::translations($body);
+            $this->body = null;
+        } else {
+            $this->body = $body === '' ? null : $body;
+            $this->bodies = [];
+        }
 
         return $this;
     }
 
-    public function image(string $url): self
+    /**
+     * The language a device gets when its own has no translation. Defaults to
+     * `en` when there is one, else the first language given.
+     */
+    public function defaultLanguage(?string $lang): self
     {
-        $this->imageUrl = $url;
+        $this->defaultLanguage = $lang === null || trim($lang) === '' ? null : trim($lang);
+
+        return $this;
+    }
+
+    /** `null` / `''` leaves the image unset. */
+    public function image(?string $url): self
+    {
+        $this->imageUrl = $url === '' ? null : $url;
 
         return $this;
     }
@@ -77,6 +137,51 @@ final class PushBuilder
         $this->data = $data + $this->data;
 
         return $this;
+    }
+
+    // ---- scheduling ----
+
+    /**
+     * Deliver at this time instead of now — a `DateTimeInterface`, epoch seconds,
+     * or an ISO-8601 string with an offset (up to a year ahead; a past time goes
+     * out within a minute). `send()` then returns the scheduled send. `null`
+     * clears it, so `->sendAt($maybe)` sends now when there is no time.
+     */
+    public function sendAt(\DateTimeInterface|int|string|null $at): self
+    {
+        $this->sendAt = $at === null || $at === '' ? null : self::sendAtValue($at);
+
+        return $this;
+    }
+
+    /** Label shown for a scheduled send in the console. */
+    public function name(?string $label): self
+    {
+        $this->name = $label === '' ? null : $label;
+
+        return $this;
+    }
+
+    /**
+     * The `sendAt` wire value — always an absolute instant. An offset-less string
+     * is refused rather than guessed: read in the server's zone it would fire hours off.
+     *
+     * @internal
+     */
+    public static function sendAtValue(\DateTimeInterface|int|string $at): string
+    {
+        if ($at instanceof \DateTimeInterface) {
+            return \DateTimeImmutable::createFromInterface($at)->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d\\TH:i:s\\Z');
+        }
+        if (\is_int($at)) {
+            return gmdate('Y-m-d\\TH:i:s\\Z', $at);
+        }
+        $at = trim($at);
+        if (preg_match('/(Z|[+-]\\d{2}:?\\d{2})$/i', $at) !== 1) {
+            throw new \InvalidArgumentException(sprintf('sendAt needs a timezone offset (e.g. "2026-11-07T09:00:00Z"): %s', $at));
+        }
+
+        return $at;
     }
 
     // ---- options ----
@@ -167,7 +272,8 @@ final class PushBuilder
      */
     public function toUsers(array $distinctIds): self
     {
-        $this->distinctIds = array_values(array_unique([...$this->distinctIds, ...$distinctIds]));
+        // Empty ids are ignored, so toUsers([]) / toUser('') add no target.
+        $this->distinctIds = array_values(array_unique([...$this->distinctIds, ...self::nonEmpty($distinctIds)]));
 
         return $this;
     }
@@ -184,7 +290,7 @@ final class PushBuilder
      */
     public function setSegments(array $segmentIds): self
     {
-        $this->segmentIds = array_values(array_unique([...$this->segmentIds, ...$segmentIds]));
+        $this->segmentIds = array_values(array_unique([...$this->segmentIds, ...self::nonEmpty($segmentIds)]));
 
         return $this;
     }
@@ -226,30 +332,32 @@ final class PushBuilder
     // ---- send ----
 
     /**
-     * Deliver the notification.
+     * Deliver the notification — or, with {@see sendAt()}, schedule it.
      *
-     * @return array<mixed> { sent, failed, recipients }
+     * @return array<mixed> { sent, failed, recipients } — or the scheduled send
+     *                      { id, status, scheduledAt, sentAt, recipients, sent, failed }
      */
     public function send(): array
     {
-        if ($this->title === null || $this->title === '') {
+        $title = $this->toArray()['title'] ?? '';
+        if ($title === '') {
             throw new \InvalidArgumentException('A push notification requires a title.');
         }
         if (!$this->all && $this->distinctIds === [] && $this->segmentIds === [] && $this->filter === []) {
             throw new \InvalidArgumentException('A push notification requires a target: toUsers(), setSegments(), where(), or toAll().');
         }
 
-        return $this->client->push()->sendRaw(array_filter([
-            'title' => $this->title,
-            'body' => $this->body,
-            'imageUrl' => $this->imageUrl,
-            'data' => $this->data ?: null,
-            'options' => $this->options ?: null,
-            'distinctIds' => $this->distinctIds ?: null,
-            'segmentIds' => $this->segmentIds ?: null,
-            'filter' => $this->filter ?: null,
-            'all' => $this->all ?: null,
-        ], static fn ($v) => $v !== null));
+        return $this->client->push()->sendRaw($this->toArray());
+    }
+
+    /**
+     * Schedule it — shorthand for `->sendAt($at)->send()`.
+     *
+     * @return array<mixed> { id, status, scheduledAt, … }
+     */
+    public function schedule(\DateTimeInterface|int|string $at): array
+    {
+        return $this->sendAt($at)->send();
     }
 
     /**
@@ -259,9 +367,13 @@ final class PushBuilder
      */
     public function toArray(): array
     {
+        [$title, $body, $localizations, $defaultLanguage] = $this->content();
+
         return array_filter([
-            'title' => $this->title,
-            'body' => $this->body,
+            'title' => $title,
+            'body' => $body,
+            'localizations' => $localizations,
+            'defaultLanguage' => $defaultLanguage,
             'imageUrl' => $this->imageUrl,
             'data' => $this->data ?: null,
             'options' => $this->options ?: null,
@@ -269,6 +381,71 @@ final class PushBuilder
             'segmentIds' => $this->segmentIds ?: null,
             'filter' => $this->filter ?: null,
             'all' => $this->all ?: null,
+            'sendAt' => $this->sendAt,
+            'name' => $this->sendAt !== null ? $this->name : null,
         ], static fn ($v) => $v !== null);
+    }
+
+    /**
+     * Title/body for the wire: the base text (the default language's, when given
+     * per language) plus one complete `{title, body}` per language — a language
+     * missing one of the two takes the default language's.
+     *
+     * @return array{0: ?string, 1: ?string, 2: ?array<string, array{title: string, body?: string}>, 3: ?string}
+     */
+    private function content(): array
+    {
+        if ($this->titles === [] && $this->bodies === []) {
+            return [$this->title, $this->body, null, null];
+        }
+        $langs = array_values(array_unique([...array_keys($this->titles), ...array_keys($this->bodies)]));
+        $default = $this->defaultLanguage
+            ?? (isset($this->titles['en']) || isset($this->bodies['en']) ? 'en' : $langs[0]);
+        $title = $this->title ?? $this->titles[$default] ?? ($this->titles !== [] ? reset($this->titles) : null);
+        $body = $this->body ?? $this->bodies[$default] ?? null;
+
+        $localizations = [];
+        foreach ($langs as $lang) {
+            $t = $this->titles[$lang] ?? $title;
+            if ($t === null) {
+                continue;
+            }
+            $localizations[$lang] = array_filter(
+                ['title' => $t, 'body' => $this->bodies[$lang] ?? $body],
+                static fn ($v) => $v !== null,
+            );
+        }
+
+        return [$title, $body, $localizations ?: null, $default];
+    }
+
+    /**
+     * Keep the non-empty translations, keyed by trimmed language code.
+     *
+     * @param array<mixed> $map
+     *
+     * @return array<string, string>
+     */
+    private static function translations(array $map): array
+    {
+        $out = [];
+        foreach ($map as $lang => $text) {
+            $lang = trim((string) $lang);
+            if ($lang !== '' && \is_string($text) && trim($text) !== '') {
+                $out[$lang] = $text;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param array<mixed> $ids
+     *
+     * @return list<string>
+     */
+    private static function nonEmpty(array $ids): array
+    {
+        return array_values(array_filter($ids, static fn ($id) => $id !== null && $id !== ''));
     }
 }
