@@ -27,6 +27,7 @@ use Illuminate\Support\Facades\Facade;
  * @method static \Inverge\Nexus\Resource\InApp      inApp()
  * @method static \Inverge\Nexus\Resource\LiveActivities liveActivities()
  * @method static \Inverge\Nexus\Messaging\Messaging messaging()
+ * @method static \Inverge\Nexus\PushAuth\PushAuth pushAuth()
  *
  * @see \Inverge\Nexus\NexusClient
  */
