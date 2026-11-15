@@ -33,6 +33,8 @@ final class Verifications
      * SMS is available.
      *
      * @param list<string>|null         $channels e.g. ['whatsapp', 'telegram']
+     * @param string|null               $whatsappSender which of your WhatsApp numbers sends the code: the number
+     *                                                  in any format, or its phone number id (default: the project's default)
      * @param array<string, mixed>|null $metadata
      *
      * @return array<string, mixed>|null
@@ -51,6 +53,7 @@ final class Verifications
         ?string $senderUsername = null,
         ?int $maxAttempts = null,
         ?array $metadata = null,
+        ?string $whatsappSender = null,
     ): ?array {
         if ($to === '') {
             throw new \InvalidArgumentException('verifications()->start() needs a phone number in E.164 form.');
@@ -61,6 +64,7 @@ final class Verifications
             'channels' => $channels === null ? null : array_values($channels),
             'whatsappTemplate' => $whatsappTemplate,
             'whatsappLanguage' => $whatsappLanguage,
+            'whatsappSender' => $whatsappSender,
             'codeLength' => $codeLength,
             'ttl' => $ttl,
             'fallback' => $smsFallback ? 'sms' : null,
