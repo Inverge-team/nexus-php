@@ -51,6 +51,12 @@ final class Messaging
      * so a retry of the same send returns the first message instead of a second.
      *
      * @param array<string, mixed>|null      $content   structured content, validated per channel
+     * @param string|null                    $sender    which of your connected accounts sends it (omit for the
+     *                                                  channel's default): WhatsApp — the number in any format or
+     *                                                  its phone number id; Telegram — the bot's @username;
+     *                                                  Messenger — the Facebook Page id or name; Instagram — the
+     *                                                  account id or @username; Viber — the bot's name or URI;
+     *                                                  SMS — an approved sender ID
      * @param array<string, string|int>|null $variables the template's named variables
      * @param array<string, mixed>|null      $metadata  echoed back on reads and webhooks
      *

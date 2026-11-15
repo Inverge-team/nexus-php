@@ -11,6 +11,7 @@ use Inverge\Nexus\Exception\ApiException;
 use Inverge\Nexus\Http\CurlTransport;
 use Inverge\Nexus\Http\SyncDispatcher;
 use Inverge\Nexus\Messaging\Messaging;
+use Inverge\Nexus\PushAuth\PushAuth;
 use Inverge\Nexus\Resource\Errors;
 use Inverge\Nexus\Resource\Events;
 use Inverge\Nexus\Resource\Flags;
@@ -205,6 +206,15 @@ final class NexusClient
     public function messaging(): Messaging
     {
         return $this->messaging ??= new Messaging($this->syncDispatcher, fn (): bool => $this->enabled(Services::MESSAGING));
+    }
+
+    /**
+     * Push Authentication — approve sign-ins on the user's phone. The API key
+     * must be granted Push Authentication server access in the console.
+     */
+    public function pushAuth(): PushAuth
+    {
+        return new PushAuth($this->syncDispatcher, fn (): bool => $this->enabled(Services::PUSH_AUTH), $this->config->timeout);
     }
 
     public function config(): Config

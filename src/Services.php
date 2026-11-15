@@ -37,6 +37,7 @@ final class Services
     public const SHIELD = 'shield';
     public const DOCSTORE = 'docstore';
     public const MESSAGING = 'messaging';
+    public const PUSH_AUTH = 'push_auth';
 
     /** Service → the environment variable that switches it. */
     public const ENV = [
@@ -56,6 +57,7 @@ final class Services
         self::SHIELD => 'NEXUS_SHIELD_ENABLED',
         self::DOCSTORE => 'NEXUS_DOCSTORE_ENABLED',
         self::MESSAGING => 'NEXUS_MESSAGING_ENABLED',
+        self::PUSH_AUTH => 'NEXUS_PUSH_AUTH_ENABLED',
     ];
 
     /** The master switch. */
@@ -79,6 +81,7 @@ final class Services
         'shield' => self::SHIELD,
         'docstore' => self::DOCSTORE,
         'messaging' => self::MESSAGING,
+        'push-auth' => self::PUSH_AUTH,
     ];
 
     /** @param array<string, bool> $disabled service => true for each one that's off */

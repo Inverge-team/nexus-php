@@ -39,6 +39,7 @@ return [
         'live_activities' => env('NEXUS_LIVE_ACTIVITIES_ENABLED', true),
         'telescope' => env('NEXUS_TELESCOPE_ENABLED', true),
         'messaging' => env('NEXUS_MESSAGING_ENABLED', true),
+        'push_auth' => env('NEXUS_PUSH_AUTH_ENABLED', true),
     ],
 
     /*
