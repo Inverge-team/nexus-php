@@ -108,6 +108,11 @@ final class NexusMessagingMessage
         return $this;
     }
 
+    /**
+     * Which of your connected accounts sends it: a WhatsApp number (any format)
+     * or phone number id, a Telegram bot's @username, a Facebook Page id or name,
+     * an Instagram @username, a Viber bot's name, or an SMS sender ID.
+     */
     public function sender(string $sender): self
     {
         $this->sender = $sender;
