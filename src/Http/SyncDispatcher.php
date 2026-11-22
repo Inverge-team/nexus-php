@@ -9,11 +9,16 @@ use Inverge\Nexus\Contracts\Dispatcher;
 use Inverge\Nexus\Contracts\RawTransport;
 use Inverge\Nexus\Contracts\Transport;
 use Inverge\Nexus\Exception\ApiException;
+use Inverge\Nexus\Exception\BillingSuspendedException;
 use Inverge\Nexus\Exception\NexusException;
 
 /**
  * The default dispatcher — authenticates and sends the request synchronously
  * over a {@see Transport}, throwing {@see ApiException} on a non-2xx response.
+ *
+ * Every request passes the {@see BillingSuspension} breaker: after a 402 the
+ * dispatcher refuses locally ({@see BillingSuspendedException}) instead of
+ * calling a suspended API.
  */
 final class SyncDispatcher implements Dispatcher
 {
@@ -25,6 +30,7 @@ final class SyncDispatcher implements Dispatcher
 
     public function dispatch(string $method, string $path, ?array $json = null, array $headers = []): ?array
     {
+        $this->guard($path);
         $allHeaders = $this->headers($headers);
         if ($json !== null) {
             $allHeaders['Content-Type'] = 'application/json';
@@ -32,11 +38,7 @@ final class SyncDispatcher implements Dispatcher
 
         $response = $this->transport->send($method, $this->config->httpBase() . $path, $allHeaders, $json, $this->config->timeout);
 
-        if (!$response->successful()) {
-            throw ApiException::fromResponse($response);
-        }
-
-        return $response->json();
+        return $this->result($path, $response);
     }
 
     /**
@@ -54,16 +56,42 @@ final class SyncDispatcher implements Dispatcher
                 . ' on it, or use the built-in cURL / PSR-18 transport.',
             );
         }
+        $this->guard($path);
         $allHeaders = $this->headers($headers);
         $allHeaders['Content-Type'] = $contentType;
 
         $response = $this->transport->sendRaw($method, $this->config->httpBase() . $path, $allHeaders, $body, $this->config->timeout);
 
-        if (!$response->successful()) {
-            throw ApiException::fromResponse($response);
+        return $this->result($path, $response);
+    }
+
+    /** Refuse locally — no request — while billing access is suspended. */
+    private function guard(string $path): void
+    {
+        $refused = BillingSuspension::check($this->config, $path);
+        if ($refused !== null) {
+            throw $refused;
+        }
+    }
+
+    /**
+     * @return array<mixed>|null
+     */
+    private function result(string $path, ApiResponse $response): ?array
+    {
+        if ($response->successful()) {
+            BillingSuspension::record($this->config, $path, $response->status);
+
+            return $response->json();
         }
 
-        return $response->json();
+        $error = ApiException::fromResponse($response);
+        $seconds = BillingSuspension::record($this->config, $path, $error->status, $error->errorCode, $error->details);
+        if ($seconds !== null) {
+            throw new BillingSuspendedException($error->getMessage(), $seconds, false, $error->details);
+        }
+
+        throw $error;
     }
 
     /**

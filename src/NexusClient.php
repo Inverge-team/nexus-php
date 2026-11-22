@@ -8,6 +8,8 @@ use Inverge\Nexus\Contracts\Dispatcher;
 use Inverge\Nexus\DocStore\DocStore;
 use Inverge\Nexus\Contracts\Transport;
 use Inverge\Nexus\Exception\ApiException;
+use Inverge\Nexus\Exception\BillingSuspendedException;
+use Inverge\Nexus\Http\BillingSuspension;
 use Inverge\Nexus\Http\CurlTransport;
 use Inverge\Nexus\Http\SyncDispatcher;
 use Inverge\Nexus\Messaging\Messaging;
@@ -41,6 +43,12 @@ use Inverge\Nexus\Telescope\Telescope;
 final class NexusClient
 {
     private readonly Dispatcher $dispatcher;
+
+    /**
+     * Fire-and-forget services: while billing is suspended their calls are
+     * dropped and return null instead of throwing into the app.
+     */
+    private const TELEMETRY = [Services::EVENTS, Services::ERRORS, Services::LOGS, Services::TELESCOPE];
 
     /** DocStore and messaging always run synchronously, even when telemetry goes through a queue. */
     private readonly SyncDispatcher $syncDispatcher;
@@ -243,7 +251,26 @@ final class NexusClient
             return null;
         }
 
-        return $this->dispatcher->dispatch($method, $path, $json, $headers);
+        // Billing suspension (402): once the API has refused, nothing more is
+        // sent or queued until the pause ends — see BillingSuspension.
+        // Telemetry is dropped quietly; anything else throws, without a request.
+        $telemetry = $service !== null && \in_array($service, self::TELEMETRY, true);
+        $refused = BillingSuspension::refusal($this->config, $path);
+        if ($refused !== null) {
+            if ($telemetry) {
+                return null;
+            }
+            throw $refused;
+        }
+
+        try {
+            return $this->dispatcher->dispatch($method, $path, $json, $headers);
+        } catch (BillingSuspendedException $e) {
+            if ($telemetry) {
+                return null;
+            }
+            throw $e;
+        }
     }
 
     /**
