@@ -38,7 +38,7 @@ final class NexusLiveActivityChannel
     {
     }
 
-    /** @return array<mixed>|null the API result ({ ios, android, … }), null when nothing was sent */
+    /** @return array<mixed>|null the API result ({ accepted, jobId, activityId, status } — delivered asynchronously), null when nothing was sent */
     public function send(object $notifiable, object $notification): ?array
     {
         if (!method_exists($notification, 'toNexusLiveActivity')) {
