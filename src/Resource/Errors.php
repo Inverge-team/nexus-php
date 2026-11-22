@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace Inverge\Nexus\Resource;
 
+use Inverge\Nexus\Exception\ApiException;
+use Inverge\Nexus\Exception\BillingSuspendedException;
+use Inverge\Nexus\Exception\TransportException;
+
 /**
  * Error monitoring — report exceptions/messages from your backend.
  */
@@ -48,11 +52,36 @@ final class Errors extends AbstractResource
      */
     public function captureException(\Throwable $exception, array $options = []): array
     {
+        if (self::isDeliveryFailure($exception)) {
+            return [];
+        }
+
         return $this->capture($exception->getMessage(), array_merge([
             'type' => $exception::class,
             'handled' => true,
             'stack' => self::stackFrom($exception),
         ], $options));
+    }
+
+    /**
+     * Whether `$exception` (or anything it wraps) is the SDK failing to REACH
+     * Nexus — billing suspension, rate limiting, an outage, the network. Those
+     * are never reported to Nexus Errors: the report would travel the same
+     * failing path, fail, and be reported again. A 4xx the API answered for a
+     * bad request (validation, not found…) is still the app's bug and is reported.
+     */
+    public static function isDeliveryFailure(\Throwable $exception): bool
+    {
+        for ($e = $exception, $depth = 0; $e !== null && $depth < 10; $e = $e->getPrevious(), $depth++) {
+            if ($e instanceof BillingSuspendedException || $e instanceof TransportException) {
+                return true;
+            }
+            if ($e instanceof ApiException && ($e->errorCode === 'billing_suspended' || $e->status === 429 || $e->status >= 500)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** @return list<array{function:?string,filename:?string,lineno:?int}> */

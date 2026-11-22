@@ -8,6 +8,7 @@ use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
 use Inverge\Nexus\Config;
 use Illuminate\Notifications\ChannelManager;
+use Inverge\Nexus\Http\BillingSuspension;
 use Inverge\Nexus\Http\SyncDispatcher;
 use Inverge\Nexus\Laravel\Notifications\CacheDeliveryLedger;
 use Inverge\Nexus\Laravel\Notifications\NexusChannel;
@@ -103,11 +104,27 @@ final class NexusServiceProvider extends ServiceProvider
             $this->commands([NexusTestCommand::class]);
         }
 
+        $this->shareBillingSuspension();
         $this->registerNotificationChannel();
         $this->registerShieldMiddleware();
         $this->registerLogChannel();
         $this->attachLogHandler();
         $this->registerTelescope();
+    }
+
+    /**
+     * Keep the billing-suspension pause (see BillingSuspension) in the app's
+     * cache, so a 402 seen by one worker pauses web, queue and scheduler alike.
+     */
+    private function shareBillingSuspension(): void
+    {
+        try {
+            if ($this->app->bound('cache')) {
+                BillingSuspension::useStore(new CacheSuspensionStore($this->app->make('cache')->store()));
+            }
+        } catch (\Throwable) {
+            // keep the file store — never break app boot over this
+        }
     }
 
     /** `->middleware('nexus.shield:checkout')` — verify Shield tokens on a route. */
