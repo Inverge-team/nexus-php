@@ -20,6 +20,13 @@ use Inverge\Nexus\LiveActivity\LiveActivityBuilder;
  *
  * Plain (your own iOS widget):
  * `$nexus->liveActivities()->activity('DeliveryAttributes', 'order_42')->status('Preparing')->progress(20)->toUser('u_1')->start();`
+ *
+ * start / update / end are accepted at once (HTTP 202) and delivered by Nexus
+ * in the background, with retries and in order per activity — the call never
+ * waits on Apple or Google. Each returns `{ accepted, jobId, activityId,
+ * status }`; {@see job()} reports the outcome. A repeated start for an activity
+ * a user already has updates it instead of starting a second one, so retrying
+ * a start is safe.
  */
 final class LiveActivities extends AbstractResource
 {
@@ -55,7 +62,7 @@ final class LiveActivities extends AbstractResource
      * @param array<string, mixed> $data
      * @param array{distinctIds?:list<string>,lang?:string,alert?:array{title:string,body?:string},attributes?:array<string,mixed>,staleDate?:string,priority?:int} $options
      *
-     * @return array<mixed> { ios, android, iosTargets, iosWarning? }
+     * @return array<mixed> { accepted, jobId, activityId, status } — queued; delivery is asynchronous (see job())
      */
     public function startTemplate(string|array $template, string $activityId, array $data = [], array $options = []): array
     {
@@ -79,7 +86,7 @@ final class LiveActivities extends AbstractResource
      * @param array<string, mixed> $data
      * @param array{staleDate?:string,priority?:int} $options
      *
-     * @return array<mixed> { ios, android }
+     * @return array<mixed> { accepted, jobId, activityId, status } — queued; delivery is asynchronous (see job())
      */
     public function updateData(string $activityId, array $data, array $options = []): array
     {
@@ -114,7 +121,7 @@ final class LiveActivities extends AbstractResource
      * @param array<string, mixed> $contentState  the initial state (title/subtitle/body/status/progress …)
      * @param array{distinctIds?:list<string>,attributes?:array<string,mixed>,staleDate?:string,priority?:int} $options
      *
-     * @return array<mixed> { ios, android } — devices reached
+     * @return array<mixed> { accepted, jobId, activityId, status } — queued; delivery is asynchronous (see job())
      */
     public function start(string $activityType, string $activityId, array $contentState, array $options = []): array
     {
@@ -136,7 +143,7 @@ final class LiveActivities extends AbstractResource
      * @param array<string, mixed> $contentState
      * @param array{staleDate?:string,priority?:int} $options
      *
-     * @return array<mixed> { ios, android }
+     * @return array<mixed> { accepted, jobId, activityId, status } — queued; delivery is asynchronous (see job())
      */
     public function update(string $activityId, array $contentState, array $options = []): array
     {
@@ -154,7 +161,7 @@ final class LiveActivities extends AbstractResource
      *
      * @param array{contentState?:array<string,mixed>,data?:array<string,mixed>,dismissalDate?:string} $options
      *
-     * @return array<mixed> { ios, android }
+     * @return array<mixed> { accepted, jobId, activityId, status } — queued; delivery is asynchronous (see job())
      */
     public function end(string $activityId, array $options = []): array
     {
@@ -163,6 +170,18 @@ final class LiveActivities extends AbstractResource
             'contentState' => ($options['contentState'] ?? null) ?: null,
             'dismissalDate' => $options['dismissalDate'] ?? null,
         ])) ?? [];
+    }
+
+    /**
+     * The outcome of a queued start / update / end: `status` is pending →
+     * running → done (or `dead` once Nexus gave up retrying), with `attempts`,
+     * `result` ({ ios, android, … } devices reached) and `lastError`.
+     *
+     * @return array<mixed> { jobId, activityId, kind, status, attempts, nextAttemptAt, result, lastError, source, createdAt, completedAt }
+     */
+    public function job(string $jobId): array
+    {
+        return $this->client->request('GET', '/partner/live-activities/jobs/'.rawurlencode($jobId)) ?? [];
     }
 
     /**

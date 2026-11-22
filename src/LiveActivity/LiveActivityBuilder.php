@@ -298,7 +298,7 @@ final class LiveActivityBuilder
     /**
      * Start the activity.
      *
-     * @return array<mixed> { ios, android }
+     * @return array<mixed> { accepted, jobId, activityId, status } — queued; delivery is asynchronous (see job())
      */
     public function start(): array
     {
@@ -327,7 +327,7 @@ final class LiveActivityBuilder
     /**
      * Push a new content-state.
      *
-     * @return array<mixed> { ios, android }
+     * @return array<mixed> { accepted, jobId, activityId, status } — queued; delivery is asynchronous (see job())
      */
     public function update(): array
     {
@@ -347,7 +347,7 @@ final class LiveActivityBuilder
     /**
      * End the activity (with an optional final content-state and dismissal time).
      *
-     * @return array<mixed> { ios, android }
+     * @return array<mixed> { accepted, jobId, activityId, status } — queued; delivery is asynchronous (see job())
      */
     public function end(): array
     {
