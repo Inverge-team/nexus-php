@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Inverge\Nexus\Messaging;
 
 use Inverge\Nexus\Http\SyncDispatcher;
+use Inverge\Nexus\Support\ClientIp;
 
 /**
  * One-time codes on WhatsApp or Telegram, whichever is cheaper for the number.
@@ -36,6 +37,10 @@ final class Verifications
      * @param string|null               $whatsappSender which of your WhatsApp numbers sends the code: the number
      *                                                  in any format, or its phone number id (default: the project's default)
      * @param array<string, mixed>|null $metadata
+     * @param string|null               $clientIp your end user's IP, for the per-IP rate limit. Leave it null
+     *                                            and the SDK sends the address of the request being handled —
+     *                                            in Laravel and Symfony also from a queued job or message
+     *                                            dispatched by that request (see {@see ClientIp})
      *
      * @return array<string, mixed>|null
      */
@@ -54,6 +59,7 @@ final class Verifications
         ?int $maxAttempts = null,
         ?array $metadata = null,
         ?string $whatsappSender = null,
+        ?string $clientIp = null,
     ): ?array {
         if ($to === '') {
             throw new \InvalidArgumentException('verifications()->start() needs a phone number in E.164 form.');
@@ -74,7 +80,8 @@ final class Verifications
             'senderUsername' => $senderUsername,
             'maxAttempts' => $maxAttempts,
             'metadata' => $metadata === null ? null : (object) $metadata,
-        ]));
+            'clientIp' => $clientIp,
+        ]), ClientIp::headers($clientIp));
     }
 
     /**
@@ -103,15 +110,16 @@ final class Verifications
 
     /**
      * @param array<string, mixed>|null $json
+     * @param array<string, string>     $headers
      *
      * @return array<string, mixed>|null
      */
-    private function call(string $method, string $path, ?array $json = null): ?array
+    private function call(string $method, string $path, ?array $json = null, array $headers = []): ?array
     {
         if (!($this->enabled)()) {
             return null;
         }
 
-        return $this->dispatcher->dispatch($method, $path, $json);
+        return $this->dispatcher->dispatch($method, $path, $json, $headers);
     }
 }
