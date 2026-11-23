@@ -22,6 +22,7 @@ use Inverge\Nexus\Telescope\Telescope;
 use Inverge\Nexus\Monolog\NexusLogHandler;
 use Inverge\Nexus\NexusClient;
 use Inverge\Nexus\Services;
+use Inverge\Nexus\Support\ClientIp;
 use Monolog\Level;
 use Monolog\Logger;
 
@@ -110,6 +111,31 @@ final class NexusServiceProvider extends ServiceProvider
         $this->registerLogChannel();
         $this->attachLogHandler();
         $this->registerTelescope();
+        $this->forwardClientIp();
+    }
+
+    /**
+     * The end user's IP for Messaging's per-IP limit, from the request and
+     * across the queue — see {@see ClientIpPropagation}.
+     */
+    private function forwardClientIp(): void
+    {
+        if (!(bool) ($this->app['config']['nexus.forward_client_ip'] ?? true)) {
+            ClientIp::disable();
+
+            return;
+        }
+        try {
+            $app = $this->app;
+            (new ClientIpPropagation(static function (string $message) use ($app): void {
+                try {
+                    $app->make('log')->warning($message);
+                } catch (\Throwable) {
+                }
+            }))->register($this->app->make('events'));
+        } catch (\Throwable) {
+            // best-effort — never break app boot over this
+        }
     }
 
     /**

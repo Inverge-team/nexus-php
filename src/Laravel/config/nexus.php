@@ -44,6 +44,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Messaging: forward the end user's IP
+    |--------------------------------------------------------------------------
+    | Verification codes (and sends with messageClass 'otp') carry the IP of the
+    | user whose request asked for them, so the project's per-IP rate limit
+    | works — also from queued notifications and jobs, which carry it in their
+    | payload. Behind a proxy or load balancer, configure trusted proxies so
+    | $request->ip() is the user, not the proxy. Set false to never send it.
+    */
+    'forward_client_ip' => env('NEXUS_FORWARD_CLIENT_IP', true),
+
+    /*
+    |--------------------------------------------------------------------------
     | Queued delivery
     |--------------------------------------------------------------------------
     | When enabled, the `nexus.queue` client (and the log handler, if it uses

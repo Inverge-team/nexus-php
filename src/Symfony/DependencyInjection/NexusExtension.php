@@ -8,6 +8,8 @@ use Inverge\Nexus\Config;
 use Inverge\Nexus\Http\SyncDispatcher;
 use Inverge\Nexus\Monolog\NexusLogHandler;
 use Inverge\Nexus\NexusClient;
+use Inverge\Nexus\Symfony\ClientIp\ClientIpMessengerSubscriber;
+use Inverge\Nexus\Symfony\ClientIp\ClientIpSubscriber;
 use Inverge\Nexus\Symfony\EventListener\ExceptionSubscriber;
 use Inverge\Nexus\Symfony\Messenger\MessengerDispatcher;
 use Inverge\Nexus\Symfony\Messenger\NexusDeliveryHandler;
@@ -50,6 +52,17 @@ final class NexusExtension extends Extension
         $clientDefinition->setPublic(true);
         $container->setDefinition(NexusClient::class, $clientDefinition);
         $container->setAlias('nexus', NexusClient::class)->setPublic(true);
+
+        // The end user's IP for Messaging's per-IP limit (see ClientIp).
+        $container->setParameter('nexus.forward_client_ip', (bool) $config['forward_client_ip']);
+        if ($config['forward_client_ip']) {
+            $container->setDefinition(ClientIpSubscriber::class, (new Definition(ClientIpSubscriber::class))
+                ->addTag('kernel.event_subscriber'));
+            if (interface_exists('Symfony\Component\Messenger\Stamp\StampInterface')) {
+                $container->setDefinition(ClientIpMessengerSubscriber::class, (new Definition(ClientIpMessengerSubscriber::class))
+                    ->addTag('kernel.event_subscriber'));
+            }
+        }
 
         // Which client telemetry (errors/logs) uses — the async one when enabled.
         $telemetryClient = new Reference(NexusClient::class);

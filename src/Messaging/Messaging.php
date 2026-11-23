@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Inverge\Nexus\Messaging;
 
 use Inverge\Nexus\Http\SyncDispatcher;
+use Inverge\Nexus\Support\ClientIp;
 
 /**
  * Messaging — send on WhatsApp, Telegram, SMS and the other channels.
@@ -109,6 +110,8 @@ final class Messaging
 
         return $this->call('POST', self::BASE . '/messages', $payload, [
             'Idempotency-Key' => $idempotencyKey ?? 'nxs-' . bin2hex(random_bytes(16)),
+            // Only an OTP picks up the request's address by itself — see ClientIp.
+            ...($messageClass === 'otp' ? ClientIp::headers($clientIp) : []),
         ]);
     }
 
